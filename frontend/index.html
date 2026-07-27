@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="./plugin-studio.css">
     <link rel="stylesheet" href="./compliance.css">
     <link rel="stylesheet" href="./splash.css">
+    <link rel="stylesheet" href="./skills.css">
     <script src="./chart.umd.min.js"></script>
     <script>
         // 禁用浏览器默认右键菜单（知识库文件项除外）
@@ -675,10 +676,23 @@
                             </svg>
                             <span data-i18n="claudeMD">CLAUDE.md</span>
                         </button>
+                        <button class="filter-btn" data-type="skills" onclick="filterByType('skills')">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                            </svg>
+                            <span data-i18n="skills">Skills</span>
+                        </button>
                     </div>
 
                     <!-- 文档列表 -->
                     <div id="knowledgeDocList" class="knowledge-doc-list">
+                        <div class="empty-state">
+                            <p data-i18n="loading">加载中...</p>
+                        </div>
+                    </div>
+
+                    <!-- Skills 列表（默认隐藏） -->
+                    <div id="skillDocList" class="skill-doc-list" style="display: none;">
                         <div class="empty-state">
                             <p data-i18n="loading">加载中...</p>
                         </div>
@@ -696,8 +710,13 @@
                             <span id="knowledgeDocName" class="doc-name" onclick="startRenameDoc()" title="点击修改名称" style="cursor: pointer;">选择文档查看</span>
                             <input id="knowledgeDocNameInput" class="doc-name-input" type="text" style="display: none;" onblur="finishRenameDoc()" onkeydown="handleRenameKeydown(event)">
                             <span id="knowledgeDocType" class="doc-type-badge"></span>
+
+                            <!-- Skills 工具栏（默认隐藏） -->
+                            <span id="skillDocName" class="doc-name" style="display: none;">选择 Skill 查看</span>
+                            <span id="skillDocScope" class="skill-scope-badge" style="display: none;"></span>
                         </div>
                         <div class="toolbar-right">
+                            <!-- 知识库按钮（默认显示） -->
                             <button id="knowledgeAuditBtn" class="btn btn-sm" onclick="openKnowledgeComplianceAudit()" style="display: none;">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M9 11l3 3L22 4"/>
@@ -716,6 +735,24 @@
                                 <span data-i18n="saveDocument">保存</span>
                             </button>
                             <button class="btn btn-sm btn-danger" onclick="deleteKnowledgeDoc()">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                            </button>
+
+                            <!-- Skills 按钮（默认隐藏） -->
+                            <button id="skillEditBtn" class="btn btn-sm" onclick="toggleSkillEdit()" style="display: none;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                                <span data-i18n="editDocument">编辑</span>
+                            </button>
+                            <button id="skillSaveBtn" class="btn btn-sm btn-primary" onclick="saveSkillDoc()" style="display: none;">
+                                <span data-i18n="saveDocument">保存</span>
+                            </button>
+                            <button id="skillDeleteBtn" class="btn btn-sm btn-danger" onclick="deleteSkillDoc()" style="display: none;">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <polyline points="3 6 5 6 21 6"/>
                                     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -768,6 +805,21 @@
                                     <div id="sectionEditorFooter" class="section-editor-footer"></div>
                                 </div>
                             </div>
+                        </div>
+
+                        <!-- Skills 预览（默认隐藏） -->
+                        <div id="skillPreview" class="skill-preview markdown-body" style="display: none;">
+                            <div class="empty-state">
+                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                                </svg>
+                                <p data-i18n="selectSkill">选择 Skill 查看内容</p>
+                            </div>
+                        </div>
+
+                        <!-- Skills 编辑器（默认隐藏） -->
+                        <div id="skillEditor" class="skill-editor" style="display: none;">
+                            <textarea id="skillEditorContent" class="editor-textarea" placeholder="输入 Skill 内容（YAML frontmatter + Markdown）..."></textarea>
                         </div>
 
                         <!-- 合规审计子视图（默认隐藏） -->
@@ -1115,6 +1167,49 @@
             </div>
         </div>
 
+        <!-- Create Skill Modal -->
+        <div id="createSkillModal" class="create-skill-modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>新建 Agent Skill</h2>
+                    <button class="modal-close" onclick="closeCreateSkillModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label">Skill 名称</label>
+                        <input type="text" id="newSkillName" class="form-input" placeholder="my-awesome-skill" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">描述（激活触发词）</label>
+                        <textarea id="newSkillDescription" class="form-textarea" rows="2" placeholder="Description of what this skill does" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">作用域</label>
+                        <div class="scope-options">
+                            <label class="scope-option">
+                                <input type="radio" name="skillScope" value="user" checked onchange="toggleSkillScopeSelect()">
+                                <span>用户级 (User)</span>
+                            </label>
+                            <label class="scope-option">
+                                <input type="radio" name="skillScope" value="project" onchange="toggleSkillScopeSelect()">
+                                <span>项目级 (Project)</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div id="skillProjectSelectGroup" class="form-group project-select-group">
+                        <label class="form-label">选择项目</label>
+                        <div id="skillProjectSelectList" class="project-select-list">
+                            <div class="empty-state"><p>加载中...</p></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn" onclick="closeCreateSkillModal()">取消</button>
+                    <button class="btn btn-primary" onclick="confirmCreateSkill()">创建</button>
+                </div>
+            </div>
+        </div>
+
         <!-- CLAUDE.md Generator Modal -->
         <div id="generatorModal" class="modal" style="display: none;">
             <div class="modal-content" style="max-width: 800px;">
@@ -1292,6 +1387,7 @@
     <script src="./continuity.js"></script>
     <script src="./plugin-studio.js"></script>
     <script src="./compliance.js"></script>
+    <script src="./skills.js"></script>
     <script src="./resizer.js"></script>
 </body>
 </html>

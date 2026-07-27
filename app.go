@@ -26,6 +26,7 @@ import (
 	"argus-desktop/internal/session"
 	"argus-desktop/internal/session/claude"
 	"argus-desktop/internal/settings"
+	"argus-desktop/internal/skills"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -42,6 +43,7 @@ type App struct {
 	continuity   *continuity.Engine
 	continuityMu sync.RWMutex // 保护 continuity 字段的并发访问
 	plugin       *plugin.Engine
+	skills       *skills.Engine
 	llmCfg       *llm.ProviderConfig // LLM 配置（用于合规审计）
 
 	// 会话索引（轻量级内存索引，避免每次 O(n×m) 遍历）
@@ -195,6 +197,14 @@ func (a *App) startup(ctx context.Context) {
 		log.Printf("WARN: 插件工作室引擎初始化失败: %v", err)
 	} else {
 		a.plugin = pluginEngine
+	}
+
+	// 初始化 Skills 引擎
+	skillsEngine, err := skills.NewEngine()
+	if err != nil {
+		log.Printf("WARN: Skills 引擎初始化失败: %v", err)
+	} else {
+		a.skills = skillsEngine
 	}
 
 	// 构建会话索引（轻量级，仅读取文件名和修改时间）
@@ -1853,6 +1863,65 @@ func (a *App) BatchUpdateCLAUDEMD(updates []CLAUDEMDBatchUpdate) (*BatchCLAUDEMD
 	}
 
 	return result, nil
+}
+
+// ============================================
+// Skills Management (Skills 管理)
+// ============================================
+
+// GetSkills 获取 Skills 列表
+func (a *App) GetSkills(scope string, project string) ([]skills.SkillInfo, error) {
+	if a.skills == nil {
+		return nil, fmt.Errorf("Skills 引擎未初始化")
+	}
+	return a.skills.ListSkills(scope, project)
+}
+
+// GetSkill 获取单个 Skill
+func (a *App) GetSkill(path string) (*skills.SkillInfo, error) {
+	if a.skills == nil {
+		return nil, fmt.Errorf("Skills 引擎未初始化")
+	}
+	return a.skills.GetSkill(path)
+}
+
+// SaveSkill 保存 Skill
+func (a *App) SaveSkill(scope string, name string, content string, project string) (string, error) {
+	if a.skills == nil {
+		return "", fmt.Errorf("Skills 引擎未初始化")
+	}
+	return a.skills.SaveSkill(skills.SkillScope(scope), name, content, project)
+}
+
+// DeleteSkill 删除 Skill
+func (a *App) DeleteSkill(path string) error {
+	if a.skills == nil {
+		return fmt.Errorf("Skills 引擎未初始化")
+	}
+	return a.skills.DeleteSkill(path)
+}
+
+// ValidateSkill 验证 Skill 内容
+func (a *App) ValidateSkill(content string) []skills.ValidationError {
+	if a.skills == nil {
+		return []skills.ValidationError{
+			{Field: "engine", Message: "Skills 引擎未初始化"},
+		}
+	}
+	return a.skills.ValidateSkill(content)
+}
+
+// GetSkillUsageStats 获取 Skill 使用统计
+func (a *App) GetSkillUsageStats(projectDir string) ([]skills.SkillUsageStat, error) {
+	if a.skills == nil {
+		return nil, fmt.Errorf("Skills 引擎未初始化")
+	}
+	return a.skills.GetSkillUsageStats(projectDir)
+}
+
+// GenerateSkillTemplate 生成 Skill 模板
+func (a *App) GenerateSkillTemplate(name string, description string) string {
+	return skills.GenerateSkillTemplate(name, description)
 }
 
 // ============================================

@@ -45,6 +45,7 @@ go test ./internal/session/...
     ├──→ [compliance] ──→ CLAUDE.md rule compliance audit (LLM-powered)
     ├──→ [contexthealth] ──→ Context health analysis (peak context, health scoring)
     ├──→ [plugin] ──→ Hook/MCP configuration
+    ├──→ [skills] ──→ Agent Skills unified management
     └──→ [monitor] ──→ Real-time file watching (fsnotify)
 ```
 
@@ -57,6 +58,7 @@ go test ./internal/session/...
 - `internal/continuity/` — Cross-session handoff summary generation (requires LLM)
 - `internal/compliance/` — LLM-powered CLAUDE.md rule compliance auditing (extracts rules, audits sessions, caches results)
 - `internal/plugin/` — Hook and MCP server configuration management
+- `internal/skills/` — Agent Skills unified management (user/project/plugin scopes, YAML frontmatter parsing)
 - `internal/risk/` — File change risk assessment engine
 - `internal/monitor/` — fsnotify-based file system watcher
 - `internal/settings/` — Application settings manager
@@ -77,6 +79,8 @@ All frontend code lives in `frontend/` — plain HTML/CSS/JS with no build step:
 - `plugin-studio.js` — Hook/MCP configuration UI
 - `compliance.js` — LLM-powered compliance audit UI
 - `context-health.js` — Context health dashboard (trend charts, session health table, score visualization)
+- `skills.js` — Agent Skills management UI (list, preview, edit, create)
+- `skills.css` — Skills UI styling
 
 ### Data Flow
 

@@ -913,7 +913,81 @@ function filterByType(type) {
     document.querySelectorAll('.knowledge-filters .filter-btn').forEach(btn => {
         btn.classList.toggle('active', btn.getAttribute('data-type') === type);
     });
-    loadKnowledgeDocuments(type);
+
+    // 如果选择的是 skills 类型，切换到 Skills 视图
+    if (type === 'skills') {
+        showSkillsView();
+        loadSkills('all');
+    } else {
+        showKnowledgeView();
+        loadKnowledgeDocuments(type);
+    }
+}
+
+// 显示 Skills 视图
+function showSkillsView() {
+    const knowledgeDocList = document.getElementById('knowledgeDocList');
+    const skillDocList = document.getElementById('skillDocList');
+    const knowledgeDocName = document.getElementById('knowledgeDocName');
+    const knowledgeDocType = document.getElementById('knowledgeDocType');
+    const knowledgeDocNameInput = document.getElementById('knowledgeDocNameInput');
+    const skillDocName = document.getElementById('skillDocName');
+    const skillDocScope = document.getElementById('skillDocScope');
+    const knowledgeEditBtn = document.getElementById('knowledgeEditBtn');
+    const knowledgeSaveBtn = document.getElementById('knowledgeSaveBtn');
+    const skillEditBtn = document.getElementById('skillEditBtn');
+    const skillSaveBtn = document.getElementById('skillSaveBtn');
+    const skillDeleteBtn = document.getElementById('skillDeleteBtn');
+    const knowledgePreview = document.getElementById('knowledgePreview');
+    const skillPreview = document.getElementById('skillPreview');
+    const knowledgeEditor = document.getElementById('knowledgeEditor');
+    const skillEditor = document.getElementById('skillEditor');
+
+    if (knowledgeDocList) knowledgeDocList.style.display = 'none';
+    if (skillDocList) skillDocList.style.display = 'block';
+    if (knowledgeDocName) knowledgeDocName.style.display = 'none';
+    if (knowledgeDocType) knowledgeDocType.style.display = 'none';
+    if (knowledgeDocNameInput) knowledgeDocNameInput.style.display = 'none';
+    if (skillDocName) skillDocName.style.display = 'inline';
+    if (skillDocScope) skillDocScope.style.display = 'inline';
+    if (knowledgeEditBtn) knowledgeEditBtn.style.display = 'none';
+    if (knowledgeSaveBtn) knowledgeSaveBtn.style.display = 'none';
+    if (skillEditBtn) skillEditBtn.style.display = 'inline-flex';
+    if (skillSaveBtn) skillSaveBtn.style.display = 'none';
+    if (skillDeleteBtn) skillDeleteBtn.style.display = 'inline-flex';
+    if (knowledgePreview) knowledgePreview.style.display = 'none';
+    if (skillPreview) skillPreview.style.display = 'block';
+    if (knowledgeEditor) knowledgeEditor.style.display = 'none';
+    if (skillEditor) skillEditor.style.display = 'none';
+}
+
+// 显示知识库视图
+function showKnowledgeView() {
+    const knowledgeDocList = document.getElementById('knowledgeDocList');
+    const skillDocList = document.getElementById('skillDocList');
+    const knowledgeDocName = document.getElementById('knowledgeDocName');
+    const knowledgeDocType = document.getElementById('knowledgeDocType');
+    const skillDocName = document.getElementById('skillDocName');
+    const skillDocScope = document.getElementById('skillDocScope');
+    const knowledgeEditBtn = document.getElementById('knowledgeEditBtn');
+    const skillEditBtn = document.getElementById('skillEditBtn');
+    const skillSaveBtn = document.getElementById('skillSaveBtn');
+    const skillDeleteBtn = document.getElementById('skillDeleteBtn');
+    const knowledgePreview = document.getElementById('knowledgePreview');
+    const skillPreview = document.getElementById('skillPreview');
+
+    if (knowledgeDocList) knowledgeDocList.style.display = 'block';
+    if (skillDocList) skillDocList.style.display = 'none';
+    if (knowledgeDocName) knowledgeDocName.style.display = 'inline';
+    if (knowledgeDocType) knowledgeDocType.style.display = 'inline';
+    if (skillDocName) skillDocName.style.display = 'none';
+    if (skillDocScope) skillDocScope.style.display = 'none';
+    if (knowledgeEditBtn) knowledgeEditBtn.style.display = 'inline-flex';
+    if (skillEditBtn) skillEditBtn.style.display = 'none';
+    if (skillSaveBtn) skillSaveBtn.style.display = 'none';
+    if (skillDeleteBtn) skillDeleteBtn.style.display = 'none';
+    if (knowledgePreview) knowledgePreview.style.display = 'block';
+    if (skillPreview) skillPreview.style.display = 'none';
 }
 
 let knowledgeSearchTimeout;

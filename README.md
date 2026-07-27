@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/Go-1.23+-00ADD8?style=for-the-badge&logo=go" alt="Go">
   <img src="https://img.shields.io/badge/Wails-v2-5C2D91?style=for-the-badge" alt="Wails">
   <img src="https://img.shields.io/badge/Platform-Windows-lightgrey?style=for-the-badge" alt="Platform">
-  <img src="https://img.shields.io/badge/Version-v0.7-blue?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/Version-v0.8-blue?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License">
 </p>
 
@@ -120,6 +120,16 @@ Argus 自动从历史会话中提取已完成的任务、待办事项、关键�
 - **智能生成器**：自动检测项目语言、框架、构建工具、测试、CI、Docker，一键生成最佳实践配置
 - **知识库集中管理**：所有 Plans、Memory、CLAUDE.md 在一个地方，支持搜索、筛选、批量操作
 - **多项目切换**：自动发现所有 Claude Code 项目，无缝切换
+
+### 🔧 Agent Skills —— 统一管理 Claude 的技能
+
+**用户级、项目级、插件级 Skills，一个界面全搞定。**
+
+- **多作用域支持**：自动扫描 `~/.claude/skills/`（用户级）、`.claude/skills/`（项目级）、插件内置 Skills
+- **YAML frontmatter 解析**：完整支持 `name`、`description`、`user-invocable`、`allowed-tools` 等字段
+- **所见即所得编辑**：直接编辑 SKILL.md 内容，实时预览
+- **一键创建**：快速创建新 Skill，自动生成标准模板
+- **智能校验**：保存前自动校验必填字段，确保 Skill 有效性
 
 ### 🔌 插件工作室 (Plugin Studio)
 
@@ -402,6 +412,7 @@ Argus 运行在 Claude Code **之外**，这意味着：
 - [x] 插件工作室（Hooks + MCP 可视化配置）
 - [x] CLAUDE.md 规则遵守审计（LLM 驱动 + 缓存 + 并发审计）
 - [x] 上下文健康仪表盘（峰值上下文估算 + 健康评分 + 退化预警 + 趋势图）
+- [x] Agent Skills 统一管理（用户/项目/插件级 Skills + YAML frontmatter 解析）
 
 详细技术方案见 [docs/ROADMAP.md](docs/ROADMAP.md)。
 

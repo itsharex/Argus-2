@@ -380,6 +380,25 @@ const i18n = {
         llmEnterAPIKey: '请先输入 API Key',
         llmTesting: '测试中...',
         llmProviderHint: '填写兼容 OpenAI 或 Claude API 的服务商端点地址',
+
+        // Skills 管理
+        skills: 'Skills',
+        skillsTab: 'Skills 管理',
+        noSkills: '暂无 Skills',
+        skillsEmptyHint: '创建您的第一个 Agent Skill',
+        selectSkill: '选择 Skill 查看内容',
+        skillSaved: 'Skill 已保存',
+        skillDeleted: 'Skill 已删除',
+        confirmDeleteSkill: '确定要删除这个 Skill 吗？',
+        skillValidationWarning: 'Skill 验证有警告，是否继续保存？',
+        createSkill: '新建 Skill',
+        skillName: '名称',
+        skillDescription: '描述（激活触发词）',
+        skillScope: '作用域',
+        userSkills: '用户级 Skills',
+        projectSkills: '项目级 Skills',
+        pluginSkills: '插件 Skills',
+        noDescription: '无描述',
     },
     en: {
         // Header
@@ -761,6 +780,25 @@ const i18n = {
         noClaudeMD: 'CLAUDE.md not found. Please create one in Knowledge first.',
         auditErrorHint: 'Please ensure LLM is configured and try again',
         clickAuditHint: 'Click "Start Audit" to analyze CLAUDE.md rules and audit all sessions with LLM',
+
+        // Skills Management
+        skills: 'Skills',
+        skillsTab: 'Skills Management',
+        noSkills: 'No skills found',
+        skillsEmptyHint: 'Create your first Agent Skill',
+        selectSkill: 'Select a skill to view',
+        skillSaved: 'Skill saved',
+        skillDeleted: 'Skill deleted',
+        confirmDeleteSkill: 'Are you sure you want to delete this skill?',
+        skillValidationWarning: 'Skill validation has warnings. Continue saving?',
+        createSkill: 'Create Skill',
+        skillName: 'Name',
+        skillDescription: 'Description (activation trigger)',
+        skillScope: 'Scope',
+        userSkills: 'User Skills',
+        projectSkills: 'Project Skills',
+        pluginSkills: 'Plugin Skills',
+        noDescription: 'No description',
     }
 };
 
