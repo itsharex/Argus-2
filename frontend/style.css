@@ -20,11 +20,16 @@
     --accent-light: #e7f1ff;
 
     --success: #198754;
+    --success-light: #d1e7dd;
     --warning: #fd7e14;
+    --warning-light: #fff3cd;
     --danger: #dc3545;
+
+    --bg-active: #e7f1ff;
 
     --border: #e9ecef;
     --border-hover: #dee2e6;
+    --border-color: #e9ecef;
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
     --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
@@ -53,11 +58,16 @@
     --accent-light: rgba(77, 148, 255, 0.1);
 
     --success: #2ecc71;
+    --success-light: rgba(46, 204, 113, 0.15);
     --warning: #f39c12;
+    --warning-light: rgba(243, 156, 18, 0.15);
     --danger: #e74c3c;
+
+    --bg-active: rgba(77, 148, 255, 0.1);
 
     --border: #404040;
     --border-hover: #505050;
+    --border-color: #404040;
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
     --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
@@ -187,6 +197,16 @@ body {
 .toast.show {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
+}
+
+.toast-error {
+    background: var(--danger);
+    color: #fff;
+}
+
+.toast-success {
+    background: var(--success);
+    color: #fff;
 }
 
 /* Table Header Actions */

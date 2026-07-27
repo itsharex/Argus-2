@@ -41,7 +41,7 @@
 }
 
 /* Icon-only button */
-.btn-icon {
+.knowledge-container .btn-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -56,12 +56,12 @@
     transition: all 0.2s;
 }
 
-.btn-icon:hover {
+.knowledge-container .btn-icon:hover {
     background: var(--border-hover);
     color: var(--text-primary);
 }
 
-.btn-icon.btn-primary {
+.knowledge-container .btn-icon.btn-primary {
     background: var(--accent);
     color: white;
     border-color: var(--accent);
@@ -498,7 +498,7 @@
 }
 
 /* Button Styles */
-.btn {
+.knowledge-container .btn {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -512,11 +512,11 @@
     transition: all 0.2s;
 }
 
-.btn:hover {
+.knowledge-container .btn:hover {
     background: var(--border-hover);
 }
 
-.btn-sm {
+.knowledge-container .btn-sm {
     padding: 6px 10px;
     font-size: 12px;
 }

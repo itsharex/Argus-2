@@ -41,7 +41,7 @@ go test ./internal/session/...
     ├──→ [analytics] ──→ Token statistics
     ├──→ [diff/engine] ──→ Git diff
     ├──→ [knowledge] ──→ Plans/Memory/CLAUDE.md
-    ├──→ [continuity] ──→ Session handoff summaries (LLM-enhanced)
+    ├──→ [continuity] ──→ Session handoff summaries (requires LLM)
     ├──→ [compliance] ──→ CLAUDE.md rule compliance audit (LLM-powered)
     ├──→ [contexthealth] ──→ Context health analysis (peak context, health scoring)
     ├──→ [plugin] ──→ Hook/MCP configuration
@@ -54,7 +54,7 @@ go test ./internal/session/...
 - `internal/analytics/` — Token usage analytics engine
 - `internal/diff/` — Git diff engine (platform-specific exec)
 - `internal/knowledge/` — CLAUDE.md, Plans, Memory document management
-- `internal/continuity/` — Cross-session handoff summary generation (with optional LLM enhancement)
+- `internal/continuity/` — Cross-session handoff summary generation (requires LLM)
 - `internal/compliance/` — LLM-powered CLAUDE.md rule compliance auditing (extracts rules, audits sessions, caches results)
 - `internal/plugin/` — Hook and MCP server configuration management
 - `internal/risk/` — File change risk assessment engine
@@ -73,7 +73,7 @@ All frontend code lives in `frontend/` — plain HTML/CSS/JS with no build step:
 - `dashboard.js` — Token analytics dashboard with Chart.js
 - `knowledge.js` — Knowledge base document management
 - `claudemd-editor.js` — CLAUDE.md section-based editor
-- `continuity.js` — Session handoff summary UI
+- `continuity.js` — Session handoff summary UI (requires LLM)
 - `plugin-studio.js` — Hook/MCP configuration UI
 - `compliance.js` — LLM-powered compliance audit UI
 - `context-health.js` — Context health dashboard (trend charts, session health table, score visualization)
@@ -81,6 +81,12 @@ All frontend code lives in `frontend/` — plain HTML/CSS/JS with no build step:
 ### Data Flow
 
 Wails binds Go methods on the `App` struct to the frontend. The frontend calls these via `window.go.main.App.MethodName()`. All session data is read from `~/.claude/projects/` — Argus never writes to Claude Code's directories.
+
+### LLM Requirements
+
+Some features require LLM (Large Language Model) to be configured in settings:
+- **Cross-session handoff summary** (`continuity`): Requires LLM for generating intelligent session summaries
+- **CLAUDE.md compliance audit** (`compliance`): Requires LLM for analyzing rule compliance
 
 ## Code Conventions
 

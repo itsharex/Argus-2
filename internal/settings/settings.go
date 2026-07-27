@@ -108,61 +108,80 @@ func (m *Manager) Get() *Settings {
 // UpdateTheme 更新主题设置
 func (m *Manager) UpdateTheme(theme Theme) error {
 	m.settings.mu.Lock()
-	defer m.settings.mu.Unlock()
-
 	m.settings.Theme = theme
-	return m.save()
+	data := m.copySettingsJSON()
+	m.settings.mu.Unlock()
+
+	return m.writeSettings(data)
 }
 
 // AddCustomRule 添加自定义规则
 func (m *Manager) AddCustomRule(rule CustomRule) error {
 	m.settings.mu.Lock()
-	defer m.settings.mu.Unlock()
-
 	m.settings.CustomRules = append(m.settings.CustomRules, rule)
-	return m.save()
+	data := m.copySettingsJSON()
+	m.settings.mu.Unlock()
+
+	return m.writeSettings(data)
 }
 
 // RemoveCustomRule 删除自定义规则
 func (m *Manager) RemoveCustomRule(name string) error {
 	m.settings.mu.Lock()
-	defer m.settings.mu.Unlock()
-
+	found := false
 	for i, rule := range m.settings.CustomRules {
 		if rule.Name == name {
 			m.settings.CustomRules = append(
 				m.settings.CustomRules[:i],
 				m.settings.CustomRules[i+1:]...,
 			)
-			return m.save()
+			found = true
+			break
 		}
 	}
+	var data []byte
+	if found {
+		data = m.copySettingsJSON()
+	}
+	m.settings.mu.Unlock()
 
-	return nil
+	if !found {
+		return nil
+	}
+	return m.writeSettings(data)
 }
 
 // UpdateCustomRule 更新自定义规则
 func (m *Manager) UpdateCustomRule(name string, rule CustomRule) error {
 	m.settings.mu.Lock()
-	defer m.settings.mu.Unlock()
-
+	found := false
 	for i, r := range m.settings.CustomRules {
 		if r.Name == name {
 			m.settings.CustomRules[i] = rule
-			return m.save()
+			found = true
+			break
 		}
 	}
+	var data []byte
+	if found {
+		data = m.copySettingsJSON()
+	}
+	m.settings.mu.Unlock()
 
-	return nil
+	if !found {
+		return nil
+	}
+	return m.writeSettings(data)
 }
 
 // UpdateLLMConfig 更新 LLM 配置
 func (m *Manager) UpdateLLMConfig(config LLMConfig) error {
 	m.settings.mu.Lock()
-	defer m.settings.mu.Unlock()
-
 	m.settings.LLM = config
-	return m.save()
+	data := m.copySettingsJSON()
+	m.settings.mu.Unlock()
+
+	return m.writeSettings(data)
 }
 
 // GetLLMConfig 获取当前 LLM 配置
@@ -189,12 +208,20 @@ func (m *Manager) load() error {
 	return json.Unmarshal(data, m.settings)
 }
 
-// save 保存设置到文件
-func (m *Manager) save() error {
-	data, err := json.MarshalIndent(m.settings, "", "  ")
-	if err != nil {
+// copySettingsJSON 在锁内复制设置并序列化为 JSON（不执行 I/O）
+func (m *Manager) copySettingsJSON() []byte {
+	data, _ := json.MarshalIndent(m.settings, "", "  ")
+	return data
+}
+
+// writeSettings 将序列化后的 JSON 写入磁盘（原子写入，在锁外执行）
+func (m *Manager) writeSettings(data []byte) error {
+	if data == nil {
+		return nil
+	}
+	tmpPath := m.filePath + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
 		return err
 	}
-
-	return os.WriteFile(m.filePath, data, 0644)
+	return os.Rename(tmpPath, m.filePath)
 }

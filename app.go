@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
-	stdruntime "runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -45,6 +43,9 @@ type App struct {
 	continuityMu sync.RWMutex // 保护 continuity 字段的并发访问
 	plugin       *plugin.Engine
 	llmCfg       *llm.ProviderConfig // LLM 配置（用于合规审计）
+
+	// 会话索引（轻量级内存索引，避免每次 O(n×m) 遍历）
+	sessionIndex *session.Index
 
 	// 会话缓存
 	sessionCache     []SessionInfo
@@ -195,59 +196,60 @@ func (a *App) startup(ctx context.Context) {
 	} else {
 		a.plugin = pluginEngine
 	}
+
+	// 构建会话索引（轻量级，仅读取文件名和修改时间）
+	a.sessionIndex = session.NewIndex()
+	if err := a.sessionIndex.Build(); err != nil {
+		log.Printf("WARN: 会话索引构建失败: %v", err)
+	}
+}
+
+// shutdown 在应用退出时清理资源（关闭 Monitor 等）
+func (a *App) shutdown(ctx context.Context) {
+	a.monitorMu.Lock()
+	if a.monitor != nil {
+		a.monitor.Stop()
+		a.monitor = nil
+	}
+	a.monitorMu.Unlock()
 }
 
 // GetSessions 获取所有会话列表
 func (a *App) GetSessions() ([]SessionInfo, error) {
-	homeDir, err := os.UserHomeDir()
+	projectsDir, err := session.GetProjectsDir()
 	if err != nil {
-		return nil, fmt.Errorf("获取用户目录失败: %w", err)
+		return nil, err
 	}
 
-	claudeDir := filepath.Join(homeDir, ".claude", "projects")
-	if _, err := os.Stat(claudeDir); os.IsNotExist(err) {
+	if _, err := os.Stat(projectsDir); os.IsNotExist(err) {
 		return []SessionInfo{}, nil
 	}
 
 	var sessions []SessionInfo
 
-	// 遍历所有项目目录
-	entries, err := os.ReadDir(claudeDir)
-	if err != nil {
-		return nil, fmt.Errorf("读取 Claude 项目目录失败: %w", err)
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		projectDir := filepath.Join(claudeDir, entry.Name())
-		jsonlFiles, err := filepath.Glob(filepath.Join(projectDir, "*.jsonl"))
+	err = session.WalkAllJSONLFiles(func(info session.JSONLFileInfo) error {
+		reader := claude.NewReader()
+		// 使用轻量级读取，只解析首尾行，大幅提升性能
+		sess, err := reader.ReadLightweight(info.JSONLPath)
 		if err != nil {
-			log.Printf("WARN: 查找会话文件失败 %s: %v", projectDir, err)
-			continue
+			return nil // skip invalid files
 		}
 
-		for _, jsonlPath := range jsonlFiles {
-			reader := claude.NewReader()
-			sess, err := reader.Read(jsonlPath)
-			if err != nil {
-				continue
-			}
-
-			sessions = append(sessions, SessionInfo{
-				ID:          sess.ID,
-				Model:       sess.Model,
-				Prompt:      sess.Prompt,
-				Branch:      sess.GitBranch,
-				StartedAt:   sess.StartedAt,
-				FileCount:   len(sess.FileChanges),
-				ActionCount: len(sess.Actions),
-				ProjectDir:  entry.Name(),
-				ProjectName: formatProjectName(entry.Name()),
-			})
-		}
+		sessions = append(sessions, SessionInfo{
+			ID:          sess.ID,
+			Model:       sess.Model,
+			Prompt:      sess.Prompt,
+			Branch:      sess.GitBranch,
+			StartedAt:   sess.StartedAt,
+			FileCount:   len(sess.FileChanges),
+			ActionCount: len(sess.Actions),
+			ProjectDir:  info.ProjectDir,
+			ProjectName: formatProjectName(info.ProjectDir),
+		})
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("遍历会话文件失败: %w", err)
 	}
 
 	// 按时间倒序排列（最新的在前）
@@ -274,18 +276,41 @@ func (a *App) getCachedSessions() ([]SessionInfo, error) {
 	}
 	a.sessionCacheMu.RUnlock()
 
+	// 获取写锁并 double-check
+	a.sessionCacheMu.Lock()
+	defer a.sessionCacheMu.Unlock()
+
+	// 再次检查缓存是否已被其他 goroutine 更新
+	if time.Since(a.sessionCacheTime) < 5*time.Minute && a.sessionCache != nil {
+		return a.sessionCache, nil
+	}
+
 	// 重新加载
 	sessions, err := a.GetSessions()
 	if err != nil {
 		return nil, err
 	}
 
-	a.sessionCacheMu.Lock()
 	a.sessionCache = sessions
 	a.sessionCacheTime = time.Now()
-	a.sessionCacheMu.Unlock()
 
 	return sessions, nil
+}
+
+// findSessionPath 使用索引或全量遍历查找会话文件路径
+func (a *App) findSessionPath(id string) (string, error) {
+	// 优先使用索引查找（O(1)）
+	if a.sessionIndex != nil {
+		if path, ok := a.sessionIndex.GetPath(id); ok {
+			return path, nil
+		}
+	}
+	// 索引未命中时回退到全量遍历
+	sessionPath, _, err := session.FindSessionFile(id)
+	if err != nil {
+		return "", err
+	}
+	return sessionPath, nil
 }
 
 // invalidateSessionCache 清除会话缓存（在会话变更时调用）
@@ -293,6 +318,15 @@ func (a *App) invalidateSessionCache() {
 	a.sessionCacheMu.Lock()
 	a.sessionCache = nil
 	a.sessionCacheMu.Unlock()
+
+	// 异步刷新会话索引
+	if a.sessionIndex != nil {
+		go func() {
+			if err := a.sessionIndex.Build(); err != nil {
+				log.Printf("WARN: 会话索引刷新失败: %v", err)
+			}
+		}()
+	}
 }
 
 // GetAllProjectDirs 获取所有有会话的项目目录名（共享逻辑，与会话列表保持一致）
@@ -339,39 +373,9 @@ func (a *App) GetSession(id string) (*SessionDetail, error) {
 		return nil, fmt.Errorf("会话 ID 不能为空")
 	}
 
-	homeDir, err := os.UserHomeDir()
+	sessionPath, err := a.findSessionPath(id)
 	if err != nil {
-		return nil, fmt.Errorf("获取用户目录失败: %w", err)
-	}
-
-	claudeDir := filepath.Join(homeDir, ".claude", "projects")
-
-	// 查找会话文件
-	var sessionPath string
-	entries, _ := os.ReadDir(claudeDir)
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		projectDir := filepath.Join(claudeDir, entry.Name())
-		jsonlFiles, err := filepath.Glob(filepath.Join(projectDir, "*.jsonl"))
-		if err != nil {
-			log.Printf("WARN: 查找会话文件失败 %s: %v", projectDir, err)
-			continue
-		}
-		for _, jsonlPath := range jsonlFiles {
-			if filepath.Base(jsonlPath) == id+".jsonl" || filepath.Base(jsonlPath) == id {
-				sessionPath = jsonlPath
-				break
-			}
-		}
-		if sessionPath != "" {
-			break
-		}
-	}
-
-	if sessionPath == "" {
-		return nil, fmt.Errorf("未找到会话: %s", id)
+		return nil, err
 	}
 
 	// 读取会话
@@ -1053,46 +1057,24 @@ func (a *App) ExportSession(sessionID string, format string, outputDir string) (
 
 // getSessionByID retrieves session data by ID.
 func (a *App) getSessionByID(id string) (*session.Session, error) {
-	homeDir, err := os.UserHomeDir()
+	sessionPath, err := a.findSessionPath(id)
 	if err != nil {
-		return nil, fmt.Errorf("获取用户目录失败: %w", err)
+		return nil, err
 	}
 
-	claudeDir := filepath.Join(homeDir, ".claude", "projects")
-
-	// 遍历所有项目目录，查找匹配的会话 ID
-	entries, _ := os.ReadDir(claudeDir)
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		projectDir := filepath.Join(claudeDir, entry.Name())
-		jsonlFiles, err := filepath.Glob(filepath.Join(projectDir, "*.jsonl"))
-		if err != nil {
-			log.Printf("WARN: 查找会话文件失败 %s: %v", projectDir, err)
-			continue
-		}
-		for _, jsonlPath := range jsonlFiles {
-			// 优化：先通过文件名快速匹配，避免读取所有文件
-			baseName := filepath.Base(jsonlPath)
-			if baseName != id+".jsonl" && baseName != id {
-				continue
-			}
-
-			// 文件名匹配后才读取文件内容
-			reader := claude.NewReader()
-			sess, err := reader.Read(jsonlPath)
-			if err != nil {
-				continue
-			}
-			// 检查会话 ID 是否匹配（双重验证）
-			if sess.ID == id {
-				return sess, nil
-			}
-		}
+	// 读取会话内容
+	reader := claude.NewReader()
+	sess, err := reader.Read(sessionPath)
+	if err != nil {
+		return nil, fmt.Errorf("读取会话失败: %w", err)
 	}
 
-	return nil, fmt.Errorf("未找到会话: %s", id)
+	// 双重验证会话 ID
+	if sess.ID != id {
+		return nil, fmt.Errorf("会话 ID 不匹配: 期望 %s, 实际 %s", id, sess.ID)
+	}
+
+	return sess, nil
 }
 
 // ============================================
@@ -1165,34 +1147,13 @@ func (a *App) GetContextHealthOverview() (*contexthealth.OverviewHealth, error) 
 
 // GetSessionContextHealth 获取单个会话的上下文健康详情
 func (a *App) GetSessionContextHealth(sessionID string) (*contexthealth.SessionHealth, error) {
-	homeDir, err := os.UserHomeDir()
+	sessionPath, err := a.findSessionPath(sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("获取用户目录失败: %w", err)
-	}
-	claudeDir := filepath.Join(homeDir, ".claude", "projects")
-
-	// 遍历项目目录查找对应的 JSONL 文件
-	projectDirs, err := filepath.Glob(filepath.Join(claudeDir, "projects", "*"))
-	if err != nil {
-		return nil, fmt.Errorf("遍历项目目录失败: %w", err)
+		return nil, err
 	}
 
-	for _, projectDir := range projectDirs {
-		jsonlFiles, err := filepath.Glob(filepath.Join(projectDir, "*.jsonl"))
-		if err != nil {
-			continue
-		}
-		for _, jsonlPath := range jsonlFiles {
-			base := filepath.Base(jsonlPath)
-			baseName := strings.TrimSuffix(base, ".jsonl")
-			if baseName == sessionID || baseName == sessionID+".jsonl" {
-				analyzer := contexthealth.NewAnalyzer()
-				return analyzer.AnalyzeSession(jsonlPath)
-			}
-		}
-	}
-
-	return nil, fmt.Errorf("未找到会话: %s", sessionID)
+	analyzer := contexthealth.NewAnalyzer()
+	return analyzer.AnalyzeSession(sessionPath)
 }
 
 // ============================================
@@ -1471,33 +1432,16 @@ func (a *App) BatchOperation(op session.BatchOperation) (*session.BatchOperation
 
 // deleteSession 删除会话文件
 func (a *App) deleteSession(sessionID string) error {
-	homeDir, err := os.UserHomeDir()
+	sessionPath, err := a.findSessionPath(sessionID)
 	if err != nil {
-		return fmt.Errorf("获取用户目录失败: %w", err)
+		return err
 	}
 
-	claudeDir := filepath.Join(homeDir, ".claude", "projects")
-
-	// 查找并删除会话文件
-	entries, _ := os.ReadDir(claudeDir)
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		projectDir := filepath.Join(claudeDir, entry.Name())
-		jsonlFiles, _ := filepath.Glob(filepath.Join(projectDir, "*.jsonl"))
-		for _, jsonlPath := range jsonlFiles {
-			if filepath.Base(jsonlPath) == sessionID+".jsonl" || filepath.Base(jsonlPath) == sessionID {
-				err := os.Remove(jsonlPath)
-				if err == nil {
-					a.invalidateSessionCache()
-				}
-				return err
-			}
-		}
+	err = os.Remove(sessionPath)
+	if err == nil {
+		a.invalidateSessionCache()
 	}
-
-	return fmt.Errorf("未找到会话文件: %s", sessionID)
+	return err
 }
 
 // BatchExport 批量导出会话
@@ -1667,11 +1611,14 @@ func (a *App) CreateKnowledgeDocument(docType string, title string, content stri
 		return a.knowledge.CreateDocument(knowledge.DocType(docType), title, content, project, sessionId)
 	}
 
-	// 清理标题中的特殊字符（只允许字母、数字、空格、连字符、下划线）
+	// 清理标题中的特殊字符（允许字母、数字、空格、连字符、下划线、中文）
 	var cleanTitle strings.Builder
 	for _, r := range title {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
-			r == ' ' || r == '-' || r == '_' || r == '.' {
+			r == ' ' || r == '-' || r == '_' || r == '.' ||
+			(r >= 0x4E00 && r <= 0x9FFF) || // CJK 统一汉字
+			(r >= 0x3400 && r <= 0x4DBF) || // CJK 扩展 A
+			(r >= 0xF900 && r <= 0xFAFF) {  // CJK 兼容汉字
 			cleanTitle.WriteRune(r)
 		}
 	}
@@ -1909,695 +1856,6 @@ func (a *App) BatchUpdateCLAUDEMD(updates []CLAUDEMDBatchUpdate) (*BatchCLAUDEMD
 }
 
 // ============================================
-// Session Continuity API
-// ============================================
-
-// ContinuityProjectInfo 项目信息（前端展示用）
-type ContinuityProjectInfo struct {
-	Name         string    `json:"name"`
-	DirName      string    `json:"dirName"`
-	SessionCount int       `json:"sessionCount"`
-	LastActivity time.Time `json:"lastActivity"`
-}
-
-// ContinuityTaskInfo 任务信息（前端展示用）
-type ContinuityTaskInfo struct {
-	Description   string    `json:"description"`
-	SessionID     string    `json:"sessionId"`
-	FilesChanged  []string  `json:"filesChanged"`
-	VerifiedByGit bool      `json:"verifiedByGit"`
-	Timestamp     time.Time `json:"timestamp"`
-}
-
-// ContinuityPendingTaskInfo 待办任务信息
-type ContinuityPendingTaskInfo struct {
-	Description string   `json:"description"`
-	Source      string   `json:"source"`
-	SessionID   string   `json:"sessionId"`
-	FilesHint   []string `json:"filesHint"`
-}
-
-// ContinuityDecisionInfo 决策信息
-type ContinuityDecisionInfo struct {
-	Description string    `json:"description"`
-	Context     string    `json:"context"`
-	Timestamp   time.Time `json:"timestamp"`
-	SessionID   string    `json:"sessionId"`
-}
-
-// ContinuityFileInfo 文件信息
-type ContinuityFileInfo struct {
-	Path         string `json:"path"`
-	ChangeCount  int    `json:"changeCount"`
-	ActionCount  int    `json:"actionCount"`
-	LastAction   string `json:"lastAction"`
-	IsTestFile   bool   `json:"isTestFile"`
-	IsConfigFile bool   `json:"isConfigFile"`
-}
-
-// ContinuitySummary 完整的交接摘要（前端展示用）
-type ContinuitySummary struct {
-	Project        string                      `json:"project"`
-	SessionsUsed   int                         `json:"sessionsUsed"`
-	SessionsTotal  int                         `json:"sessionsTotal"`
-	Summary        string                      `json:"summary"`
-	CompletedTasks []ContinuityTaskInfo        `json:"completedTasks"`
-	PendingTasks   []ContinuityPendingTaskInfo `json:"pendingTasks"`
-	KeyDecisions   []ContinuityDecisionInfo    `json:"keyDecisions"`
-	ModifiedFiles  []ContinuityFileInfo        `json:"modifiedFiles"`
-	KnownIssues    []string                    `json:"knownIssues"`
-	GeneratedAt    time.Time                   `json:"generatedAt"`
-	Quality        ContinuityQualityInfo       `json:"quality"`
-	LLMEnhanced    bool                        `json:"llmEnhanced"`
-}
-
-// ContinuityQualityInfo 质量评分信息
-type ContinuityQualityInfo struct {
-	Completeness float64 `json:"completeness"`
-	Accuracy     float64 `json:"accuracy"`
-	Freshness    float64 `json:"freshness"`
-	OverallScore float64 `json:"overallScore"`
-}
-
-// GetContinuityProjects 获取所有有会话的项目列表
-func (a *App) GetContinuityProjects() ([]ContinuityProjectInfo, error) {
-	a.continuityMu.RLock()
-	if a.continuity == nil {
-		a.continuityMu.RUnlock()
-		return nil, fmt.Errorf("会话连续性引擎未初始化")
-	}
-	continuityEngine := a.continuity
-	a.continuityMu.RUnlock()
-
-	projects, err := continuityEngine.GetAvailableProjects()
-	if err != nil {
-		return nil, err
-	}
-
-	result := make([]ContinuityProjectInfo, len(projects))
-	for i, p := range projects {
-		result[i] = ContinuityProjectInfo{
-			Name:         p.Name,
-			DirName:      p.DirName,
-			SessionCount: p.SessionCount,
-			LastActivity: p.LastActivity,
-		}
-	}
-
-	return result, nil
-}
-
-// GenerateContinuityHandoff 生成会话交接摘要
-func (a *App) GenerateContinuityHandoff(project string, sessionCount int) (*ContinuitySummary, error) {
-	if project == "" {
-		return nil, fmt.Errorf("项目目录名不能为空")
-	}
-	if sessionCount <= 0 {
-		sessionCount = 10 // 默认值
-	}
-
-	a.continuityMu.RLock()
-	if a.continuity == nil {
-		a.continuityMu.RUnlock()
-		return nil, fmt.Errorf("会话连续性引擎未初始化")
-	}
-	continuityEngine := a.continuity
-	a.continuityMu.RUnlock()
-
-	summary, err := continuityEngine.GenerateHandoff(project, sessionCount)
-	if err != nil {
-		return nil, err
-	}
-
-	// 转换为前端格式
-	completedTasks := make([]ContinuityTaskInfo, len(summary.CompletedTasks))
-	for i, t := range summary.CompletedTasks {
-		completedTasks[i] = ContinuityTaskInfo{
-			Description:   t.Description,
-			SessionID:     t.SessionID,
-			FilesChanged:  t.FilesChanged,
-			VerifiedByGit: t.VerifiedByGit,
-			Timestamp:     t.Timestamp,
-		}
-	}
-
-	pendingTasks := make([]ContinuityPendingTaskInfo, len(summary.PendingTasks))
-	for i, t := range summary.PendingTasks {
-		pendingTasks[i] = ContinuityPendingTaskInfo{
-			Description: t.Description,
-			Source:      t.Source,
-			SessionID:   t.SessionID,
-			FilesHint:   t.FilesHint,
-		}
-	}
-
-	keyDecisions := make([]ContinuityDecisionInfo, len(summary.KeyDecisions))
-	for i, d := range summary.KeyDecisions {
-		keyDecisions[i] = ContinuityDecisionInfo{
-			Description: d.Description,
-			Context:     d.Context,
-			Timestamp:   d.Timestamp,
-			SessionID:   d.SessionID,
-		}
-	}
-
-	modifiedFiles := make([]ContinuityFileInfo, len(summary.ModifiedFiles))
-	for i, f := range summary.ModifiedFiles {
-		modifiedFiles[i] = ContinuityFileInfo{
-			Path:         f.Path,
-			ChangeCount:  f.ChangeCount,
-			ActionCount:  f.ActionCount,
-			LastAction:   f.LastAction,
-			IsTestFile:   f.IsTestFile,
-			IsConfigFile: f.IsConfigFile,
-		}
-	}
-
-	return &ContinuitySummary{
-		Project:        summary.Project,
-		SessionsUsed:   summary.SessionsUsed,
-		SessionsTotal:  summary.SessionsTotal,
-		Summary:        summary.Summary,
-		CompletedTasks: completedTasks,
-		PendingTasks:   pendingTasks,
-		KeyDecisions:   keyDecisions,
-		ModifiedFiles:  modifiedFiles,
-		KnownIssues:    summary.KnownIssues,
-		GeneratedAt:    summary.GeneratedAt,
-		Quality: ContinuityQualityInfo{
-			Completeness: summary.Quality.Completeness,
-			Accuracy:     summary.Quality.Accuracy,
-			Freshness:    summary.Quality.Freshness,
-			OverallScore: summary.Quality.OverallScore,
-		},
-		LLMEnhanced: summary.LLMEnhanced,
-	}, nil
-}
-
-// ExportContinuityToMemory 导出交接摘要到 memory 目录
-func (a *App) ExportContinuityToMemory(project string, sessionCount int) (string, error) {
-	if project == "" {
-		return "", fmt.Errorf("项目目录名不能为空")
-	}
-	if sessionCount <= 0 {
-		sessionCount = 10 // 默认值
-	}
-
-	a.continuityMu.RLock()
-	if a.continuity == nil {
-		a.continuityMu.RUnlock()
-		return "", fmt.Errorf("会话连续性引擎未初始化")
-	}
-	continuityEngine := a.continuity
-	a.continuityMu.RUnlock()
-
-	return continuityEngine.ExportToMemory(project, sessionCount)
-}
-
-// GenerateContinuityMarkdown 生成 Markdown 格式的交接摘要
-func (a *App) GenerateContinuityMarkdown(project string, sessionCount int) (string, error) {
-	if project == "" {
-		return "", fmt.Errorf("项目目录名不能为空")
-	}
-	if sessionCount <= 0 {
-		sessionCount = 10 // 默认值
-	}
-
-	a.continuityMu.RLock()
-	if a.continuity == nil {
-		a.continuityMu.RUnlock()
-		return "", fmt.Errorf("会话连续性引擎未初始化")
-	}
-	continuityEngine := a.continuity
-	a.continuityMu.RUnlock()
-
-	markdown, _, err := continuityEngine.GenerateHandoffMarkdown(project, sessionCount)
-	return markdown, err
-}
-
-// GenerateContinuityPrompt 生成可粘贴的 prompt 片段
-func (a *App) GenerateContinuityPrompt(project string, sessionCount int) (string, error) {
-	if project == "" {
-		return "", fmt.Errorf("项目目录名不能为空")
-	}
-	if sessionCount <= 0 {
-		sessionCount = 10 // 默认值
-	}
-
-	a.continuityMu.RLock()
-	if a.continuity == nil {
-		a.continuityMu.RUnlock()
-		return "", fmt.Errorf("会话连续性引擎未初始化")
-	}
-	continuityEngine := a.continuity
-	a.continuityMu.RUnlock()
-
-	prompt, _, err := continuityEngine.GenerateHandoffPrompt(project, sessionCount)
-	return prompt, err
-}
-
-// ExportContinuityToMemoryWithData 使用已生成的摘要数据导出到 memory 目录
-// 避免重新调用 LLM，直接使用前端传递的摘要数据
-func (a *App) ExportContinuityToMemoryWithData(project string, summary *ContinuitySummary) (string, error) {
-	a.continuityMu.RLock()
-	if a.continuity == nil {
-		a.continuityMu.RUnlock()
-		return "", fmt.Errorf("会话连续性引擎未初始化")
-	}
-	continuityEngine := a.continuity
-	a.continuityMu.RUnlock()
-
-	// 将前端格式的摘要转换为内部格式
-	handoffSummary := convertToHandoffSummary(summary)
-
-	// 生成 Markdown 并保存
-	markdown := continuityEngine.GetHandoffGenerator().GenerateMarkdown(handoffSummary)
-	return continuityEngine.GetHandoffGenerator().SaveToMemory(handoffSummary, markdown)
-}
-
-// GenerateContinuityMarkdownWithData 使用已生成的摘要数据生成 Markdown
-// 避免重新调用 LLM，直接使用前端传递的摘要数据
-func (a *App) GenerateContinuityMarkdownWithData(project string, summary *ContinuitySummary) (string, error) {
-	a.continuityMu.RLock()
-	if a.continuity == nil {
-		a.continuityMu.RUnlock()
-		return "", fmt.Errorf("会话连续性引擎未初始化")
-	}
-	continuityEngine := a.continuity
-	a.continuityMu.RUnlock()
-
-	// 将前端格式的摘要转换为内部格式
-	handoffSummary := convertToHandoffSummary(summary)
-
-	// 生成 Markdown
-	return continuityEngine.GetHandoffGenerator().GenerateMarkdown(handoffSummary), nil
-}
-
-// GenerateContinuityPromptWithData 使用已生成的摘要数据生成 Prompt
-// 避免重新调用 LLM，直接使用前端传递的摘要数据
-func (a *App) GenerateContinuityPromptWithData(project string, summary *ContinuitySummary) (string, error) {
-	a.continuityMu.RLock()
-	if a.continuity == nil {
-		a.continuityMu.RUnlock()
-		return "", fmt.Errorf("会话连续性引擎未初始化")
-	}
-	continuityEngine := a.continuity
-	a.continuityMu.RUnlock()
-
-	// 将前端格式的摘要转换为内部格式
-	handoffSummary := convertToHandoffSummary(summary)
-
-	// 生成 Prompt
-	return continuityEngine.GetHandoffGenerator().GeneratePrompt(handoffSummary), nil
-}
-
-// convertToHandoffSummary 将前端格式的摘要转换为内部格式
-func convertToHandoffSummary(summary *ContinuitySummary) *continuity.HandoffSummary {
-	// 转换已完成任务
-	completedTasks := make([]continuity.CompletedTask, len(summary.CompletedTasks))
-	for i, t := range summary.CompletedTasks {
-		completedTasks[i] = continuity.CompletedTask{
-			Description:   t.Description,
-			SessionID:     t.SessionID,
-			FilesChanged:  t.FilesChanged,
-			VerifiedByGit: t.VerifiedByGit,
-			Timestamp:     t.Timestamp,
-		}
-	}
-
-	// 转换待办任务
-	pendingTasks := make([]continuity.PendingTask, len(summary.PendingTasks))
-	for i, t := range summary.PendingTasks {
-		pendingTasks[i] = continuity.PendingTask{
-			Description: t.Description,
-			Source:      t.Source,
-			SessionID:   t.SessionID,
-			FilesHint:   t.FilesHint,
-		}
-	}
-
-	// 转换关键决策
-	decisions := make([]continuity.Decision, len(summary.KeyDecisions))
-	for i, d := range summary.KeyDecisions {
-		decisions[i] = continuity.Decision{
-			Description: d.Description,
-			Context:     d.Context,
-			Timestamp:   d.Timestamp,
-			SessionID:   d.SessionID,
-		}
-	}
-
-	// 转换文件信息
-	modifiedFiles := make([]continuity.FileSummary, len(summary.ModifiedFiles))
-	for i, f := range summary.ModifiedFiles {
-		modifiedFiles[i] = continuity.FileSummary{
-			Path:         f.Path,
-			ChangeCount:  f.ChangeCount,
-			ActionCount:  f.ActionCount,
-			LastAction:   f.LastAction,
-			IsTestFile:   f.IsTestFile,
-			IsConfigFile: f.IsConfigFile,
-		}
-	}
-
-	return &continuity.HandoffSummary{
-		Project:        summary.Project,
-		SessionsUsed:   summary.SessionsUsed,
-		SessionsTotal:  summary.SessionsTotal,
-		Summary:        summary.Summary,
-		CompletedTasks: completedTasks,
-		PendingTasks:   pendingTasks,
-		KeyDecisions:   decisions,
-		ModifiedFiles:  modifiedFiles,
-		KnownIssues:    summary.KnownIssues,
-		GeneratedAt:    summary.GeneratedAt,
-		Quality: continuity.SummaryQuality{
-			Completeness: summary.Quality.Completeness,
-			Accuracy:     summary.Quality.Accuracy,
-			Freshness:    summary.Quality.Freshness,
-			OverallScore: summary.Quality.OverallScore,
-		},
-		LLMEnhanced: summary.LLMEnhanced,
-	}
-}
-
-// openDirectory 打开指定目录（跨平台）
-func openDirectory(dir string) error {
-	log.Printf("openDirectory: 打开目录: %q", dir)
-	var cmd *exec.Cmd
-	switch stdruntime.GOOS {
-	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", "", dir)
-	case "darwin":
-		cmd = exec.Command("open", dir)
-	default: // linux
-		cmd = exec.Command("xdg-open", dir)
-	}
-	err := cmd.Start()
-	if err != nil {
-		log.Printf("openDirectory: 打开目录失败: %v", err)
-		return fmt.Errorf("打开目录失败: %w", err)
-	}
-	return nil
-}
-
-// ============================================
-// Plugin Studio API
-// ============================================
-
-// PluginSettingsDTO 插件工作室配置（前端展示用）
-type PluginSettingsDTO struct {
-	Hooks      []HookConfigDTO      `json:"hooks"`
-	MCPServers []MCPServerConfigDTO `json:"mcpServers"`
-}
-
-// HookConfigDTO Hook 配置（前端展示用）
-type HookConfigDTO struct {
-	Type     string   `json:"type"`
-	Matcher  string   `json:"matcher"`
-	Commands []string `json:"commands"`
-	Enabled  bool     `json:"enabled"`
-}
-
-// MCPServerConfigDTO MCP 服务器配置（前端展示用）
-type MCPServerConfigDTO struct {
-	Name      string            `json:"name"`
-	Transport string            `json:"transport"`
-	Command   string            `json:"command"`
-	URL       string            `json:"url"`
-	Args      []string          `json:"args"`
-	Env       map[string]string `json:"env"`
-	Enabled   bool              `json:"enabled"`
-}
-
-// HookTemplateDTO Hook 模板（前端展示用）
-type HookTemplateDTO struct {
-	Name        string       `json:"name"`
-	Description string       `json:"description"`
-	Category    string       `json:"category"`
-	Hook        HookConfigDTO `json:"hook"`
-}
-
-// ValidationErrorDTO 验证错误（前端展示用）
-type ValidationErrorDTO struct {
-	Field   string `json:"field"`
-	Message string `json:"message"`
-}
-
-// GetPluginSettings 获取插件工作室配置
-func (a *App) GetPluginSettings(projectDir string) (*PluginSettingsDTO, error) {
-	if a.plugin == nil {
-		return &PluginSettingsDTO{
-			Hooks:      []HookConfigDTO{},
-			MCPServers: []MCPServerConfigDTO{},
-		}, nil
-	}
-
-	settings, err := a.plugin.LoadSettings(projectDir)
-	if err != nil {
-		return nil, fmt.Errorf("加载插件配置失败: %w", err)
-	}
-
-	// 转换为 DTO
-	hooks := make([]HookConfigDTO, len(settings.Hooks))
-	for i, h := range settings.Hooks {
-		hooks[i] = HookConfigDTO{
-			Type:     string(h.Type),
-			Matcher:  h.Matcher,
-			Commands: h.Commands,
-			Enabled:  h.Enabled,
-		}
-	}
-
-	mcpServers := make([]MCPServerConfigDTO, len(settings.MCPServers))
-	for i, s := range settings.MCPServers {
-		mcpServers[i] = MCPServerConfigDTO{
-			Name:      s.Name,
-			Transport: string(s.Transport),
-			Command:   s.Command,
-			URL:       s.URL,
-			Args:      s.Args,
-			Env:       s.Env,
-			Enabled:   s.Enabled,
-		}
-	}
-
-	return &PluginSettingsDTO{
-		Hooks:      hooks,
-		MCPServers: mcpServers,
-	}, nil
-}
-
-// SavePluginSettings 保存插件工作室配置
-func (a *App) SavePluginSettings(projectDir string, settings *PluginSettingsDTO) error {
-	if a.plugin == nil {
-		return fmt.Errorf("插件工作室引擎未初始化")
-	}
-
-	// 转换 DTO 为内部类型
-	hooks := make([]plugin.HookConfig, len(settings.Hooks))
-	for i, h := range settings.Hooks {
-		hooks[i] = plugin.HookConfig{
-			Type:     plugin.HookType(h.Type),
-			Matcher:  h.Matcher,
-			Commands: h.Commands,
-			Enabled:  h.Enabled,
-		}
-	}
-
-	mcpServers := make([]plugin.MCPServerConfig, len(settings.MCPServers))
-	for i, s := range settings.MCPServers {
-		mcpServers[i] = plugin.MCPServerConfig{
-			Name:      s.Name,
-			Transport: plugin.TransportType(s.Transport),
-			Command:   s.Command,
-			URL:       s.URL,
-			Args:      s.Args,
-			Env:       s.Env,
-			Enabled:   s.Enabled,
-		}
-	}
-
-	internalSettings := &plugin.PluginSettings{
-		Hooks:      hooks,
-		MCPServers: mcpServers,
-	}
-
-	return a.plugin.SaveSettings(projectDir, internalSettings)
-}
-
-// AddPluginHook 添加 Hook 配置
-func (a *App) AddPluginHook(projectDir string, hook HookConfigDTO) error {
-	if a.plugin == nil {
-		return fmt.Errorf("插件工作室引擎未初始化")
-	}
-
-	return a.plugin.AddHook(projectDir, plugin.HookConfig{
-		Type:     plugin.HookType(hook.Type),
-		Matcher:  hook.Matcher,
-		Commands: hook.Commands,
-		Enabled:  hook.Enabled,
-	})
-}
-
-// UpdatePluginHook 更新 Hook 配置
-func (a *App) UpdatePluginHook(projectDir string, index int, hook HookConfigDTO) error {
-	if a.plugin == nil {
-		return fmt.Errorf("插件工作室引擎未初始化")
-	}
-
-	return a.plugin.UpdateHook(projectDir, index, plugin.HookConfig{
-		Type:     plugin.HookType(hook.Type),
-		Matcher:  hook.Matcher,
-		Commands: hook.Commands,
-		Enabled:  hook.Enabled,
-	})
-}
-
-// RemovePluginHook 删除 Hook 配置
-func (a *App) RemovePluginHook(projectDir string, index int) error {
-	if a.plugin == nil {
-		return fmt.Errorf("插件工作室引擎未初始化")
-	}
-
-	return a.plugin.RemoveHook(projectDir, index)
-}
-
-// AddMCPServer 添加 MCP 服务器配置
-func (a *App) AddMCPServer(projectDir string, server MCPServerConfigDTO) error {
-	if a.plugin == nil {
-		return fmt.Errorf("插件工作室引擎未初始化")
-	}
-
-	return a.plugin.AddMCPServer(projectDir, plugin.MCPServerConfig{
-		Name:      server.Name,
-		Transport: plugin.TransportType(server.Transport),
-		Command:   server.Command,
-		URL:       server.URL,
-		Args:      server.Args,
-		Env:       server.Env,
-		Enabled:   server.Enabled,
-	})
-}
-
-// UpdateMCPServer 更新 MCP 服务器配置
-func (a *App) UpdateMCPServer(projectDir string, index int, server MCPServerConfigDTO) error {
-	if a.plugin == nil {
-		return fmt.Errorf("插件工作室引擎未初始化")
-	}
-
-	return a.plugin.UpdateMCPServer(projectDir, index, plugin.MCPServerConfig{
-		Name:      server.Name,
-		Transport: plugin.TransportType(server.Transport),
-		Command:   server.Command,
-		URL:       server.URL,
-		Args:      server.Args,
-		Env:       server.Env,
-		Enabled:   server.Enabled,
-	})
-}
-
-// RemoveMCPServer 删除 MCP 服务器配置
-func (a *App) RemoveMCPServer(projectDir string, index int) error {
-	if a.plugin == nil {
-		return fmt.Errorf("插件工作室引擎未初始化")
-	}
-
-	return a.plugin.RemoveMCPServer(projectDir, index)
-}
-
-// GetHookTemplates 获取 Hook 模板列表
-func (a *App) GetHookTemplates() ([]HookTemplateDTO, error) {
-	if a.plugin == nil {
-		return nil, fmt.Errorf("插件工作室引擎未初始化")
-	}
-
-	templates := a.plugin.GetHookTemplates()
-	result := make([]HookTemplateDTO, len(templates))
-	for i, t := range templates {
-		result[i] = HookTemplateDTO{
-			Name:        t.Name,
-			Description: t.Description,
-			Category:    t.Category,
-			Hook: HookConfigDTO{
-				Type:     string(t.Hook.Type),
-				Matcher:  t.Hook.Matcher,
-				Commands: t.Hook.Commands,
-				Enabled:  t.Hook.Enabled,
-			},
-		}
-	}
-
-	return result, nil
-}
-
-// ApplyHookTemplate 应用 Hook 模板
-func (a *App) ApplyHookTemplate(projectDir string, template HookTemplateDTO) error {
-	if a.plugin == nil {
-		return fmt.Errorf("插件工作室引擎未初始化")
-	}
-
-	return a.plugin.ApplyHookTemplate(projectDir, plugin.HookTemplate{
-		Name:        template.Name,
-		Description: template.Description,
-		Category:    template.Category,
-		Hook: plugin.HookConfig{
-			Type:     plugin.HookType(template.Hook.Type),
-			Matcher:  template.Hook.Matcher,
-			Commands: template.Hook.Commands,
-			Enabled:  template.Hook.Enabled,
-		},
-	})
-}
-
-// ValidatePluginSettings 验证插件配置
-func (a *App) ValidatePluginSettings(settings *PluginSettingsDTO) ([]ValidationErrorDTO, error) {
-	if a.plugin == nil {
-		return nil, fmt.Errorf("插件工作室引擎未初始化")
-	}
-
-	// 转换 DTO 为内部类型
-	hooks := make([]plugin.HookConfig, len(settings.Hooks))
-	for i, h := range settings.Hooks {
-		hooks[i] = plugin.HookConfig{
-			Type:     plugin.HookType(h.Type),
-			Matcher:  h.Matcher,
-			Commands: h.Commands,
-			Enabled:  h.Enabled,
-		}
-	}
-
-	mcpServers := make([]plugin.MCPServerConfig, len(settings.MCPServers))
-	for i, s := range settings.MCPServers {
-		mcpServers[i] = plugin.MCPServerConfig{
-			Name:      s.Name,
-			Transport: plugin.TransportType(s.Transport),
-			Command:   s.Command,
-			URL:       s.URL,
-			Args:      s.Args,
-			Env:       s.Env,
-			Enabled:   s.Enabled,
-		}
-	}
-
-	internalSettings := &plugin.PluginSettings{
-		Hooks:      hooks,
-		MCPServers: mcpServers,
-	}
-
-	errors := a.plugin.ValidateSettings(internalSettings)
-	result := make([]ValidationErrorDTO, len(errors))
-	for i, e := range errors {
-		result[i] = ValidationErrorDTO{
-			Field:   e.Field,
-			Message: e.Message,
-		}
-	}
-
-	return result, nil
-}
-
-// ============================================
 // Compliance Audit (合规审计)
 // ============================================
 
@@ -2794,102 +2052,40 @@ func (a *App) getSessionsByProject(projectName string) ([]*session.Session, erro
 
 // loadSession 加载单个会话
 func (a *App) loadSession(sessionID string) (*session.Session, error) {
-	// 使用 os.UserHomeDir() 获取用户目录
-	homeDir, err := os.UserHomeDir()
+	sessionPath, err := a.findSessionPath(sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("获取用户目录失败: %w", err)
+		return nil, err
 	}
 
-	// 扫描所有项目的会话
-	projectsDir := filepath.Join(homeDir, ".claude", "projects")
-
-	entries, err := os.ReadDir(projectsDir)
-	if err != nil {
-		return nil, fmt.Errorf("读取项目目录失败: %w", err)
-	}
-
+	// 读取会话内容
 	reader := claude.NewReader()
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		projectDir := filepath.Join(projectsDir, entry.Name())
-		jsonlFiles, err := filepath.Glob(filepath.Join(projectDir, "*.jsonl"))
-		if err != nil {
-			log.Printf("WARN: 查找会话文件失败 %s: %v", projectDir, err)
-			continue
-		}
-
-		for _, jsonlPath := range jsonlFiles {
-			sess, err := reader.Read(jsonlPath)
-			if err != nil {
-				log.Printf("读取会话文件失败 %s: %v", jsonlPath, err)
-				continue
-			}
-
-			if sess != nil && sess.ID == sessionID {
-				return sess, nil
-			}
-		}
+	sess, err := reader.Read(sessionPath)
+	if err != nil {
+		return nil, fmt.Errorf("读取会话文件失败: %w", err)
 	}
 
-	return nil, fmt.Errorf("未找到会话: %s", sessionID)
+	return sess, nil
 }
 
 // getAllSessions 获取所有会话，limit > 0 时限制返回数量
 func (a *App) getAllSessions(limit int) ([]*session.Session, error) {
 	var sessions []*session.Session
 
-	// 使用 os.UserHomeDir() 获取用户目录
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("获取用户目录失败: %w", err)
-	}
-
-	log.Printf("用户目录: %s", homeDir)
-
-	// 扫描所有项目的会话
-	projectsDir := filepath.Join(homeDir, ".claude", "projects")
-
-	log.Printf("项目目录: %s", projectsDir)
-
-	entries, err := os.ReadDir(projectsDir)
-	if err != nil {
-		log.Printf("读取项目目录失败: %v", err)
-		return nil, fmt.Errorf("读取项目目录失败: %w", err)
-	}
-
-	log.Printf("找到 %d 个项目目录", len(entries))
-
 	reader := claude.NewReader()
 
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		projectDir := filepath.Join(projectsDir, entry.Name())
-		jsonlFiles, err := filepath.Glob(filepath.Join(projectDir, "*.jsonl"))
+	err := session.WalkAllJSONLFiles(func(info session.JSONLFileInfo) error {
+		sess, err := reader.Read(info.JSONLPath)
 		if err != nil {
-			log.Printf("WARN: 查找会话文件失败 %s: %v", projectDir, err)
-			continue
+			return nil // skip invalid files
 		}
 
-		log.Printf("项目 %s: 找到 %d 个会话文件", entry.Name(), len(jsonlFiles))
-
-		for _, jsonlPath := range jsonlFiles {
-			sess, err := reader.Read(jsonlPath)
-			if err != nil {
-				log.Printf("读取会话文件失败 %s: %v", jsonlPath, err)
-				continue
-			}
-
-			if sess != nil {
-				sessions = append(sessions, sess)
-			}
+		if sess != nil {
+			sessions = append(sessions, sess)
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("遍历会话文件失败: %w", err)
 	}
 
 	log.Printf("共找到 %d 个会话", len(sessions))

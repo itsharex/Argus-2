@@ -295,7 +295,7 @@
     z-index: 1000;
 }
 
-.modal-content {
+.plugin-studio .modal-content {
     background: var(--bg-primary);
     border-radius: 12px;
     width: 90%;
@@ -307,7 +307,7 @@
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
 }
 
-.modal-header {
+.plugin-studio .modal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -468,7 +468,7 @@
    Buttons
    ============================================ */
 
-.btn {
+.plugin-studio .btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -482,12 +482,12 @@
     border: none;
 }
 
-.btn-primary {
+.plugin-studio .btn-primary {
     background: var(--accent-color);
     color: white;
 }
 
-.btn-primary:hover {
+.plugin-studio .btn-primary:hover {
     background: var(--accent-hover);
 }
 

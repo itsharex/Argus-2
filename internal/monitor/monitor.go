@@ -165,6 +165,13 @@ func (m *Monitor) watchLoop(ctx context.Context) {
 				return
 			}
 
+			// 监听目录创建事件，自动添加到监控
+			if event.Op&fsnotify.Create != 0 {
+				if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
+					_ = m.addWatchRecursive(event.Name)
+				}
+			}
+
 			// Only care about Create and Write events for .jsonl files
 			if !m.isValidEvent(event) {
 				continue

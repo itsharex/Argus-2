@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"argus-desktop/internal/session"
 )
@@ -102,7 +101,7 @@ func ExportSession(sess *session.Session, diff string, opts ExportOptions) (*Exp
 
 // generateFilename creates a filename for the exported report.
 func generateFilename(sess *session.Session, format ExportFormat) string {
-	timestamp := time.Now().Format("20060102-150405")
+	timestamp := sess.StartedAt.Format("20060102-150405")
 	sessionID := sess.ID
 	if len(sessionID) > 8 {
 		sessionID = sessionID[:8]

@@ -433,3 +433,115 @@ func (r *Reader) DetectFormat(path string) bool {
 
 	return false
 }
+
+// ReadLightweight 轻量级读取，只读取首尾行获取基本信息（用于列表展示）
+// 比 Read 快很多，适合只需要基本信息的场景
+func (r *Reader) ReadLightweight(path string) (*session.Session, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	sess := &session.Session{
+		AgentType: "claude-code",
+	}
+
+	// 收集所有行用于读取最后几行
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	const maxScanTokenSize = 4 * 1024 * 1024
+	scanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+
+	if len(lines) == 0 {
+		return sess, nil
+	}
+
+	// 解析第一行获取基本信息
+	var firstEvent jsonlLine
+	if err := json.Unmarshal([]byte(lines[0]), &firstEvent); err == nil {
+		if firstEvent.SessionID != "" {
+			sess.ID = firstEvent.SessionID
+		}
+		if firstEvent.CWD != "" {
+			sess.CWD = firstEvent.CWD
+		}
+		if firstEvent.GitBranch != "" {
+			sess.GitBranch = firstEvent.GitBranch
+		}
+		ts, _ := time.Parse(time.RFC3339Nano, firstEvent.Timestamp)
+		if !ts.IsZero() {
+			sess.StartedAt = ts
+		}
+	}
+
+	// 解析最后几行获取模型、token 使用、prompt 和结束时间
+	var lastTime time.Time
+	startIdx := 0
+	if len(lines) > 10 {
+		startIdx = len(lines) - 10 // 只读取最后 10 行
+	}
+
+	for i := startIdx; i < len(lines); i++ {
+		var event jsonlLine
+		if err := json.Unmarshal([]byte(lines[i]), &event); err != nil {
+			continue
+		}
+
+		ts, _ := time.Parse(time.RFC3339Nano, event.Timestamp)
+		if !ts.IsZero() {
+			lastTime = ts
+		}
+
+		// 提取模型名称
+		if event.Type == "assistant" && event.Message != nil {
+			if event.Message.Model != "" && sess.Model == "" {
+				sess.Model = event.Message.Model
+			}
+			// 累加 token 使用
+			if event.Message.Usage != nil {
+				sess.TokenUsage.InputTokens += event.Message.Usage.InputTokens
+				sess.TokenUsage.OutputTokens += event.Message.Usage.OutputTokens
+				sess.TokenUsage.TotalTokens = sess.TokenUsage.InputTokens + sess.TokenUsage.OutputTokens
+			}
+		}
+
+		// 提取用户提示
+		if event.Type == "user" && event.Message != nil && sess.Prompt == "" {
+			switch content := event.Message.Content.(type) {
+			case string:
+				sess.Prompt = content
+			case []any:
+				for _, block := range content {
+					if blockMap, ok := block.(map[string]any); ok {
+						if blockType, _ := blockMap["type"].(string); blockType == "text" {
+							if text, _ := blockMap["text"].(string); text != "" {
+								sess.Prompt = text
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 计算持续时间
+	if sess.StartedAt.IsZero() {
+		sess.StartedAt = time.Now()
+	}
+	if lastTime.IsZero() || lastTime.Before(sess.StartedAt) {
+		sess.Duration = time.Since(sess.StartedAt)
+	} else {
+		sess.Duration = lastTime.Sub(sess.StartedAt)
+	}
+
+	return sess, scanner.Err()
+}

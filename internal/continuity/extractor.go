@@ -1321,7 +1321,7 @@ func extractFileChangeSummary(sess *session.Session) string {
 		// 只显示文件名
 		fileName := filepath.Base(f.path)
 		if f.count > 1 {
-			parts = append(parts, fileName+"(x"+string(rune('0'+f.count))+")")
+			parts = append(parts, fmt.Sprintf("%s(x%d)", fileName, f.count))
 		} else {
 			parts = append(parts, fileName)
 		}

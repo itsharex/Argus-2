@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 // Cache 管理审计结果缓存。
 type Cache struct {
-	dir    string
+	mu      sync.RWMutex
+	dir     string
 	entries map[string]*CacheEntry
 }
 
@@ -49,6 +51,9 @@ func NewCache() (*Cache, error) {
 // Get 获取缓存的审计结果。
 // rulesHash 用于检测规则是否变化，如果规则变了缓存失效。
 func (c *Cache) Get(sessionID string, rulesHash string) (*ComplianceScore, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	entry, exists := c.entries[sessionID]
 	if !exists || entry.RulesHash != rulesHash {
 		return nil, false
@@ -58,6 +63,9 @@ func (c *Cache) Get(sessionID string, rulesHash string) (*ComplianceScore, bool)
 
 // Set 缓存审计结果。
 func (c *Cache) Set(sessionID string, rulesHash string, score *ComplianceScore) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.entries[sessionID] = &CacheEntry{
 		RulesHash: rulesHash,
 		Score:     score,
@@ -67,6 +75,9 @@ func (c *Cache) Set(sessionID string, rulesHash string, score *ComplianceScore) 
 
 // Clear 清空缓存。
 func (c *Cache) Clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.entries = make(map[string]*CacheEntry)
 	c.save()
 }

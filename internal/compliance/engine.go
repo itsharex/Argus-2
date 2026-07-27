@@ -97,7 +97,11 @@ func (e *Engine) GetComplianceOverview(ctx context.Context, sessions []*session.
 			defer func() { <-sem }()
 
 			score, err := e.AuditSession(ctx, rules, s)
-			log.Printf("会话审计进度: %d/%d (会话 %s)", idx+1, len(sessions), s.ID[:8])
+			idPrefix := s.ID
+			if len(s.ID) > 8 {
+				idPrefix = s.ID[:8]
+			}
+			log.Printf("会话审计进度: %d/%d (会话 %s)", idx+1, len(sessions), idPrefix)
 			results[idx] = result{index: idx, score: score, err: err}
 		}(i, sess)
 	}

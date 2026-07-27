@@ -58,7 +58,7 @@ function renderOverviewCards(data) {
 
     // Month-over-month change
     const changeEl = document.getElementById('monthChange');
-    if (data.monthTokenChange && data.lastMonthTokens > 0) {
+    if (data.monthTokenChange !== undefined && data.monthTokenChange !== null && data.lastMonthTokens > 0) {
         const pct = data.monthTokenChange;
         const sign = pct >= 0 ? '+' : '';
         changeEl.textContent = `${sign}${pct.toFixed(1)}% ${t('vsLastMonth')}`;

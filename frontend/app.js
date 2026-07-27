@@ -43,15 +43,27 @@ function hideSplashScreen() {
     const splashScreen = document.getElementById('splashScreen');
     if (!splashScreen) return;
 
-    // Wait for animations to complete, then hide splash screen
-    setTimeout(() => {
-        splashScreen.classList.add('hidden');
+    // 等待后端就绪（最多 10 秒），然后隐藏 splash screen
+    let attempts = 0;
+    const maxAttempts = 20; // 20 * 500ms = 10s
 
-        // Remove splash screen from DOM after transition
-        setTimeout(() => {
-            splashScreen.remove();
-        }, 600);
-    }, 3000); // 3 seconds total splash duration
+    function checkBackend() {
+        attempts++;
+        // 尝试调用一个轻量级 API 来检测后端是否就绪
+        if (window.go && window.go.main && window.go.main.App && window.go.main.App.GetSessions) {
+            splashScreen.classList.add('hidden');
+            setTimeout(() => splashScreen.remove(), 600);
+        } else if (attempts < maxAttempts) {
+            setTimeout(checkBackend, 500);
+        } else {
+            // 超时后强制隐藏
+            splashScreen.classList.add('hidden');
+            setTimeout(() => splashScreen.remove(), 600);
+        }
+    }
+
+    // 首次延迟 500ms 后开始检查（给后端启动时间）
+    setTimeout(checkBackend, 500);
 }
 
 // ============================================
@@ -236,6 +248,11 @@ async function selectSession(sessionId) {
     try {
         const detail = await window.go.main.App.GetSession(sessionId);
         renderSessionDetail(detail);
+
+        // 设置当前项目目录
+        if (detail.projectDir) {
+            window.currentProjectDir = detail.projectDir;
+        }
 
         // 加载对话记录
         await loadConversation(sessionId);
@@ -469,9 +486,9 @@ function applyTheme(theme) {
 // ============================================
 // Toast
 // ============================================
-function showToast(message) {
+function showToast(message, severity) {
     const toast = document.createElement('div');
-    toast.className = 'toast';
+    toast.className = 'toast' + (severity === 'error' ? ' toast-error' : severity === 'success' ? ' toast-success' : '');
     toast.textContent = message;
     document.body.appendChild(toast);
     setTimeout(() => toast.classList.add('show'), 10);
@@ -742,6 +759,7 @@ function switchDiffMode(mode) {
 // Utility Functions
 // ============================================
 function escapeHtml(text) {
+    if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
@@ -1147,19 +1165,19 @@ function formatSessionTime(timeStr) {
     // 小于 1 小时
     if (diff < 3600000) {
         const minutes = Math.floor(diff / 60000);
-        return `${minutes || 1} ${t('minutesAgo') || '分钟前'}`;
+        return `${minutes || 1} ${t('minutesAgo') ?? '分钟前'}`;
     }
 
     // 小于 24 小时
     if (diff < 86400000) {
         const hours = Math.floor(diff / 3600000);
-        return `${hours} ${t('hoursAgo') || '小时前'}`;
+        return `${hours} ${t('hoursAgo') ?? '小时前'}`;
     }
 
     // 小于 7 天
     if (diff < 604800000) {
         const days = Math.floor(diff / 86400000);
-        return `${days} ${t('daysAgo') || '天前'}`;
+        return `${days} ${t('daysAgo') ?? '天前'}`;
     }
 
     // 超过 7 天，显示日期

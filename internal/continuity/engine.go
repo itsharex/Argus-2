@@ -59,7 +59,13 @@ func NewEngine(cfg *llm.ProviderConfig) (*Engine, error) {
 }
 
 // GenerateHandoff 生成会话交接摘要
+// 需要启用 LLM 增强才能使用
 func (e *Engine) GenerateHandoff(projectDir string, sessionCount int) (*HandoffSummary, error) {
+	// 检查 LLM 是否启用
+	if !e.llmEnabled {
+		return nil, fmt.Errorf("生成跨会话摘要需要接入 LLM，请在设置中配置 LLM 后重试")
+	}
+
 	// 加载项目的所有会话
 	allSessions, err := e.loadProjectSessions(projectDir)
 	if err != nil {
@@ -380,6 +386,11 @@ func (e *Engine) ExportToMemory(projectDir string, sessionCount int) (string, er
 // GetHandoffGenerator 获取手交生成器
 func (e *Engine) GetHandoffGenerator() *HandoffGenerator {
 	return e.handoffGen
+}
+
+// IsLLMEnabled 返回 LLM 增强是否已启用
+func (e *Engine) IsLLMEnabled() bool {
+	return e.llmEnabled
 }
 
 // GetAvailableProjects 获取所有有会话的项目列表

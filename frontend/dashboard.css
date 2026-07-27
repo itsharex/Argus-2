@@ -391,7 +391,7 @@
     flex: 1;
 }
 
-.btn-icon {
+.dashboard .btn-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -406,12 +406,12 @@
     transition: var(--transition);
 }
 
-.btn-icon:hover {
+.dashboard .btn-icon:hover {
     background: var(--bg-tertiary);
     color: var(--text-primary);
 }
 
-.btn-icon.active {
+.dashboard .btn-icon.active {
     background: var(--accent);
     color: white;
 }

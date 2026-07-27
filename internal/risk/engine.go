@@ -113,12 +113,12 @@ func (e *Engine) loadDefaultRules() {
 			},
 		},
 
-		// 🟡 Review 规则 (优先级 20-29)
+		// 🟡 Review 规则 (优先级 9-19，需在 delete_file 之前评估)
 		{
 			Name:        "large_deletion",
 			Description: "删除超过 50 行代码",
 			Level:       session.RiskReview,
-			Priority:    20,
+			Priority:    9,
 			Check: func(fc session.FileChange) bool {
 				if fc.ChangeType != session.ChangeDeleted {
 					return false

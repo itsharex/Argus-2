@@ -20,6 +20,8 @@ async function initCompliance() {
 // ============================================
 
 async function startComplianceAudit() {
+    // 清除可能残留的旧 timer（防止双击或异常退出后泄漏）
+    if (auditTimer) { clearInterval(auditTimer); auditTimer = null; }
     if (isAuditing) return;
 
     // 优先使用知识库子视图传入的路径和项目名

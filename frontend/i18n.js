@@ -297,6 +297,7 @@ const i18n = {
         back: '返回',
         selectProjectFirst: '请先选择项目',
         generateFailed: '生成失败',
+        llmRequired: '此功能需要接入 LLM，请在设置中配置',
 
         // 质量评分
         qualityScore: '质量评分',
@@ -340,6 +341,10 @@ const i18n = {
         mcpSaved: 'MCP 服务器已保存',
         mcpDeleted: 'MCP 服务器已删除',
         templateApplied: '模板已应用',
+        createFailed: '创建失败',
+        renameFailed: '重命名失败',
+        deleteFailed: '删除失败',
+        applyFailed: '应用失败',
         settingsSaved: '配置已保存',
         validationPassed: '验证通过',
         validationErrors: '验证错误',
@@ -348,7 +353,7 @@ const i18n = {
         nameRequired: '请输入服务器名称',
         commandRequired: '请输入命令',
         urlRequired: '请输入 URL',
-        confirmDelete: '确定要删除这个配置吗？',
+        confirmDeleteConfig: '确定要删除这个配置吗？',
         confirmApply: '确定要应用这个模板吗？',
         initFailed: '初始化失败',
         validate: '验证',
@@ -647,6 +652,7 @@ const i18n = {
         back: 'Back',
         selectProjectFirst: 'Please select a project first',
         generateFailed: 'Generation failed',
+        llmRequired: 'This feature requires LLM. Please configure it in Settings.',
 
         // Quality Score
         qualityScore: 'Quality Score',
@@ -690,6 +696,10 @@ const i18n = {
         mcpSaved: 'MCP server saved',
         mcpDeleted: 'MCP server deleted',
         templateApplied: 'Template applied',
+        createFailed: 'Create failed',
+        renameFailed: 'Rename failed',
+        deleteFailed: 'Delete failed',
+        applyFailed: 'Apply failed',
         settingsSaved: 'Settings saved',
         validationPassed: 'Validation passed',
         validationErrors: 'Validation errors',
@@ -698,7 +708,7 @@ const i18n = {
         nameRequired: 'Please enter a server name',
         commandRequired: 'Please enter a command',
         urlRequired: 'Please enter a URL',
-        confirmDelete: 'Are you sure you want to delete this configuration?',
+        confirmDeleteConfig: 'Are you sure you want to delete this configuration?',
         confirmApply: 'Are you sure you want to apply this template?',
         initFailed: 'Initialization failed',
         validate: 'Validate',
@@ -758,8 +768,14 @@ const i18n = {
 let currentLang = localStorage.getItem('lang') || 'zh';
 
 // 获取翻译
-function t(key) {
-    return i18n[currentLang][key] || key;
+function t(key, fallback) {
+    const val = i18n[currentLang][key];
+    if (val) return val;
+    // 尝试另一种语言
+    const otherLang = currentLang === 'zh' ? 'en' : 'zh';
+    const otherVal = i18n[otherLang][key];
+    if (otherVal) return otherVal;
+    return fallback || key;
 }
 
 // 切换语言

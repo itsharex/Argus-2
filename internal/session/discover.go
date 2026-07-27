@@ -7,7 +7,111 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"argus-desktop/internal/i18n"
 )
+
+// GetProjectsDir returns the path to ~/.claude/projects
+func GetProjectsDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", i18n.ErrGetHomeDir(), err)
+	}
+	return filepath.Join(home, ".claude", "projects"), nil
+}
+
+// JSONLFileInfo holds information about a JSONL session file
+type JSONLFileInfo struct {
+	ProjectDir  string // project directory name
+	ProjectPath string // full path to project directory
+	JSONLPath   string // full path to JSONL file
+	FileName    string // JSONL file name (without .jsonl)
+	ModTime     time.Time
+}
+
+// WalkAllJSONLFiles walks ~/.claude/projects/*/ and calls fn for each JSONL file.
+// This eliminates the duplicated traversal pattern across the codebase.
+func WalkAllJSONLFiles(fn func(info JSONLFileInfo) error) error {
+	projectsDir, err := GetProjectsDir()
+	if err != nil {
+		return err
+	}
+
+	entries, err := os.ReadDir(projectsDir)
+	if err != nil {
+		return fmt.Errorf("%s: %w", i18n.ErrReadClaudeProjects(), err)
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		projectDir := filepath.Join(projectsDir, entry.Name())
+		jsonlFiles, err := filepath.Glob(filepath.Join(projectDir, "*.jsonl"))
+		if err != nil {
+			continue
+		}
+
+		for _, jsonlPath := range jsonlFiles {
+			fileName := strings.TrimSuffix(filepath.Base(jsonlPath), ".jsonl")
+
+			info, err := os.Stat(jsonlPath)
+			if err != nil {
+				continue
+			}
+
+			if err := fn(JSONLFileInfo{
+				ProjectDir:  entry.Name(),
+				ProjectPath: projectDir,
+				JSONLPath:   jsonlPath,
+				FileName:    fileName,
+				ModTime:     info.ModTime(),
+			}); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// FindSessionFile finds the JSONL file for a given session ID across all projects.
+// Returns the file path and project directory, or error if not found.
+func FindSessionFile(sessionID string) (jsonlPath, projectDir string, err error) {
+	err = WalkAllJSONLFiles(func(info JSONLFileInfo) error {
+		if info.FileName == sessionID || info.FileName == sessionID+".jsonl" {
+			jsonlPath = info.JSONLPath
+			projectDir = info.ProjectPath
+			return fmt.Errorf("found") // use error to break early
+		}
+		return nil
+	})
+
+	if jsonlPath == "" {
+		return "", "", fmt.Errorf("%s", i18n.ErrSessionNotFound(sessionID))
+	}
+	return jsonlPath, projectDir, nil
+}
+
+// ListAllSessionFiles returns all JSONL files across all projects, sorted by modification time (newest first).
+func ListAllSessionFiles() ([]JSONLFileInfo, error) {
+	var files []JSONLFileInfo
+
+	err := WalkAllJSONLFiles(func(info JSONLFileInfo) error {
+		files = append(files, info)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].ModTime.After(files[j].ModTime)
+	})
+
+	return files, nil
+}
 
 // DiscoverConfig 会话发现配置
 type DiscoverConfig struct {
@@ -31,7 +135,7 @@ func DiscoverSession(config DiscoverConfig) (*DiscoverResult, error) {
 	if config.HomeDir == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return nil, fmt.Errorf("获取主目录失败: %w", err)
+			return nil, fmt.Errorf("%s: %w", i18n.ErrGetHomeDir(), err)
 		}
 		config.HomeDir = home
 	}
@@ -39,7 +143,7 @@ func DiscoverSession(config DiscoverConfig) (*DiscoverResult, error) {
 	if config.WorkDir == "" {
 		wd, err := os.Getwd()
 		if err != nil {
-			return nil, fmt.Errorf("获取工作目录失败: %w", err)
+			return nil, fmt.Errorf("%s: %w", i18n.ErrGetWorkDir(), err)
 		}
 		config.WorkDir = wd
 	}
@@ -59,7 +163,7 @@ func discoverByID(config DiscoverConfig) (*DiscoverResult, error) {
 	// 遍历所有项目目录
 	projects, err := os.ReadDir(claudePath)
 	if err != nil {
-		return nil, fmt.Errorf("读取 Claude 项目目录失败: %w", err)
+		return nil, fmt.Errorf("%s: %w", i18n.ErrReadClaudeProjects(), err)
 	}
 
 	for _, project := range projects {
@@ -78,7 +182,7 @@ func discoverByID(config DiscoverConfig) (*DiscoverResult, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("未找到会话: %s", config.SessionID)
+	return nil, fmt.Errorf("%s", i18n.ErrSessionNotFound(config.SessionID))
 }
 
 func discoverByPriority(config DiscoverConfig) (*DiscoverResult, error) {
@@ -92,7 +196,7 @@ func discoverByPriority(config DiscoverConfig) (*DiscoverResult, error) {
 		return result, nil
 	}
 
-	return nil, fmt.Errorf("未找到任何 Agent 会话")
+	return nil, fmt.Errorf("%s", i18n.ErrNoSessions())
 }
 
 func discoverInProject(config DiscoverConfig) (*DiscoverResult, error) {
@@ -103,7 +207,7 @@ func discoverInProject(config DiscoverConfig) (*DiscoverResult, error) {
 
 	projectDir := filepath.Join(claudePath, encoded)
 	if _, err := os.Stat(projectDir); os.IsNotExist(err) {
-		return nil, fmt.Errorf("项目目录不存在: %s", projectDir)
+		return nil, fmt.Errorf("%s", i18n.ErrProjectDirNotExist(projectDir))
 	}
 
 	return findLatestSession(projectDir)
@@ -114,7 +218,7 @@ func discoverLatest(config DiscoverConfig) (*DiscoverResult, error) {
 
 	projects, err := os.ReadDir(claudePath)
 	if err != nil {
-		return nil, fmt.Errorf("读取 Claude 项目目录失败: %w", err)
+		return nil, fmt.Errorf("%s: %w", i18n.ErrReadClaudeProjects(), err)
 	}
 
 	var allSessions []sessionInfo
@@ -134,7 +238,7 @@ func discoverLatest(config DiscoverConfig) (*DiscoverResult, error) {
 	}
 
 	if len(allSessions) == 0 {
-		return nil, fmt.Errorf("未找到任何会话")
+		return nil, fmt.Errorf("%s", i18n.ErrNoSessions())
 	}
 
 	// 按修改时间排序
@@ -161,7 +265,7 @@ func findLatestSession(dir string) (*DiscoverResult, error) {
 	}
 
 	if len(sessions) == 0 {
-		return nil, fmt.Errorf("目录中没有会话: %s", dir)
+		return nil, fmt.Errorf("%s", i18n.ErrNoSessionsInDir(dir))
 	}
 
 	// 按修改时间排序

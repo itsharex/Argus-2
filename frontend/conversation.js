@@ -215,14 +215,3 @@ function formatConversationTime(timeStr) {
     return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 }
 
-/**
- * HTML 转义
- * @param {string} text - 原始文本
- * @returns {string} 转义后的文本
- */
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}

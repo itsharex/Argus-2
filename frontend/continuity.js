@@ -80,6 +80,17 @@ async function generateContinuityHandoff() {
         return;
     }
 
+    // 检查 LLM 是否已启用
+    try {
+        const llmEnabled = await window.go.main.App.IsContinuityLLMEnabled();
+        if (!llmEnabled) {
+            showContinuityToast(t('llmRequired') || '此功能需要接入 LLM，请在设置中配置', 'error');
+            return;
+        }
+    } catch (err) {
+        console.error('检查 LLM 状态失败:', err);
+    }
+
     const sessionCountInput = document.getElementById('continuitySessionCount');
     const sessionCount = sessionCountInput ? parseInt(sessionCountInput.value) || 10 : 10;
 
@@ -544,13 +555,6 @@ function showContinuityToast(message, type) {
 }
 
 // 辅助函数
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
 function truncate(text, maxLen) {
     if (!text) return '';
     if (text.length <= maxLen) return text;

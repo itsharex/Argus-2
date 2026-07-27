@@ -24,23 +24,21 @@ type CostResult struct {
 	Currency Currency `json:"currency"`
 }
 
-func defaultPricingTable() map[string]ModelPricing {
-	return map[string]ModelPricing{
-		"claude-opus-4-6":          {Name: "Claude Opus 4.6", InputPer1M: 15.0, OutputPer1M: 75.0, Currency: CurrencyUSD},
-		"claude-opus-4-20250514":   {Name: "Claude Opus 4", InputPer1M: 15.0, OutputPer1M: 75.0, Currency: CurrencyUSD},
-		"claude-opus-4-5-20250514": {Name: "Claude Opus 4.5", InputPer1M: 15.0, OutputPer1M: 75.0, Currency: CurrencyUSD},
-		"claude-sonnet-4-6":          {Name: "Claude Sonnet 4.6", InputPer1M: 3.0, OutputPer1M: 15.0, Currency: CurrencyUSD},
-		"claude-sonnet-4-20250514":   {Name: "Claude Sonnet 4", InputPer1M: 3.0, OutputPer1M: 15.0, Currency: CurrencyUSD},
-		"claude-sonnet-4-5-20250514": {Name: "Claude Sonnet 4.5", InputPer1M: 3.0, OutputPer1M: 15.0, Currency: CurrencyUSD},
-		"claude-haiku-4-5-20251001":  {Name: "Claude Haiku 4.5", InputPer1M: 0.80, OutputPer1M: 4.0, Currency: CurrencyUSD},
-		"claude-3-5-sonnet-20241022": {Name: "Claude 3.5 Sonnet", InputPer1M: 3.0, OutputPer1M: 15.0, Currency: CurrencyUSD},
-		"claude-3-5-haiku-20241022":  {Name: "Claude 3.5 Haiku", InputPer1M: 0.80, OutputPer1M: 4.0, Currency: CurrencyUSD},
-		"claude-3-opus-20240229":     {Name: "Claude 3 Opus", InputPer1M: 15.0, OutputPer1M: 75.0, Currency: CurrencyUSD},
-		"claude-3-sonnet-20240229":   {Name: "Claude 3 Sonnet", InputPer1M: 3.0, OutputPer1M: 15.0, Currency: CurrencyUSD},
-		"claude-3-haiku-20240307":    {Name: "Claude 3 Haiku", InputPer1M: 0.25, OutputPer1M: 1.25, Currency: CurrencyUSD},
-		"mimo-v2.5":     {Name: "MiMo V2.5", InputPer1M: 1.00, OutputPer1M: 2.00, Currency: CurrencyCNY},
-		"mimo-v2.5-pro": {Name: "MiMo V2.5 Pro", InputPer1M: 3.00, OutputPer1M: 6.00, Currency: CurrencyCNY},
-	}
+var defaultPricingTable = map[string]ModelPricing{
+	"claude-opus-4-6":          {Name: "Claude Opus 4.6", InputPer1M: 15.0, OutputPer1M: 75.0, Currency: CurrencyUSD},
+	"claude-opus-4-20250514":   {Name: "Claude Opus 4", InputPer1M: 15.0, OutputPer1M: 75.0, Currency: CurrencyUSD},
+	"claude-opus-4-5-20250514": {Name: "Claude Opus 4.5", InputPer1M: 15.0, OutputPer1M: 75.0, Currency: CurrencyUSD},
+	"claude-sonnet-4-6":          {Name: "Claude Sonnet 4.6", InputPer1M: 3.0, OutputPer1M: 15.0, Currency: CurrencyUSD},
+	"claude-sonnet-4-20250514":   {Name: "Claude Sonnet 4", InputPer1M: 3.0, OutputPer1M: 15.0, Currency: CurrencyUSD},
+	"claude-sonnet-4-5-20250514": {Name: "Claude Sonnet 4.5", InputPer1M: 3.0, OutputPer1M: 15.0, Currency: CurrencyUSD},
+	"claude-haiku-4-5-20251001":  {Name: "Claude Haiku 4.5", InputPer1M: 0.80, OutputPer1M: 4.0, Currency: CurrencyUSD},
+	"claude-3-5-sonnet-20241022": {Name: "Claude 3.5 Sonnet", InputPer1M: 3.0, OutputPer1M: 15.0, Currency: CurrencyUSD},
+	"claude-3-5-haiku-20241022":  {Name: "Claude 3.5 Haiku", InputPer1M: 0.80, OutputPer1M: 4.0, Currency: CurrencyUSD},
+	"claude-3-opus-20240229":     {Name: "Claude 3 Opus", InputPer1M: 15.0, OutputPer1M: 75.0, Currency: CurrencyUSD},
+	"claude-3-sonnet-20240229":   {Name: "Claude 3 Sonnet", InputPer1M: 3.0, OutputPer1M: 15.0, Currency: CurrencyUSD},
+	"claude-3-haiku-20240307":    {Name: "Claude 3 Haiku", InputPer1M: 0.25, OutputPer1M: 1.25, Currency: CurrencyUSD},
+	"mimo-v2.5":     {Name: "MiMo V2.5", InputPer1M: 1.00, OutputPer1M: 2.00, Currency: CurrencyCNY},
+	"mimo-v2.5-pro": {Name: "MiMo V2.5 Pro", InputPer1M: 3.00, OutputPer1M: 6.00, Currency: CurrencyCNY},
 }
 
 // PricingTable holds the current pricing configuration.
@@ -50,7 +48,7 @@ type PricingTable struct {
 
 // NewPricingTable creates a pricing table with default values.
 func NewPricingTable() *PricingTable {
-	return &PricingTable{prices: defaultPricingTable()}
+	return &PricingTable{prices: defaultPricingTable}
 }
 
 // GetPricing returns the pricing for a given model string.
@@ -77,7 +75,7 @@ func (pt *PricingTable) GetCurrency(model string) Currency {
 
 func normalizeModelName(model string) string {
 	m := strings.ToLower(strings.TrimSpace(model))
-	if _, ok := defaultPricingTable()[m]; ok {
+	if _, ok := defaultPricingTable[m]; ok {
 		return m
 	}
 	parts := strings.Split(m, "-")
@@ -85,7 +83,7 @@ func normalizeModelName(model string) string {
 		last := parts[len(parts)-1]
 		if len(last) == 8 {
 			noDate := strings.Join(parts[:len(parts)-1], "-")
-			if _, ok := defaultPricingTable()[noDate]; ok {
+			if _, ok := defaultPricingTable[noDate]; ok {
 				return noDate
 			}
 		}

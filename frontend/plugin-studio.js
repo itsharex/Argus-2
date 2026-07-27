@@ -154,7 +154,7 @@ function editHook(index) {
 async function removeHook(index) {
     if (index < 0 || index >= pluginSettings.hooks.length) return;
 
-    if (!confirm(t('confirmDelete') || '确定要删除这个 Hook 吗？')) {
+    if (!confirm(t('confirmDeleteConfig') || '确定要删除这个 Hook 吗？')) {
         return;
     }
 
@@ -335,7 +335,7 @@ function editMCPServer(index) {
 async function removeMCPServer(index) {
     if (index < 0 || index >= pluginSettings.mcpServers.length) return;
 
-    if (!confirm(t('confirmDelete') || '确定要删除这个 MCP 服务器吗？')) {
+    if (!confirm(t('confirmDeleteConfig') || '确定要删除这个 MCP 服务器吗？')) {
         return;
     }
 

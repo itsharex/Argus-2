@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"log"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -25,12 +26,13 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 26, G: 26, B: 46, A: 1},
 		OnStartup:        app.startup,
+		OnShutdown:       app.shutdown,
 		Bind: []interface{}{
 			app,
 		},
 	})
 
 	if err != nil {
-		println("Error:", err.Error())
+		log.Fatalf("启动失败: %v", err)
 	}
 }

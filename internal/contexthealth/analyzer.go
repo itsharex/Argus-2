@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -83,8 +84,6 @@ func (a *Analyzer) AnalyzeSession(jsonlPath string) (*SessionHealth, error) {
 
 	// UUID 去重：同一条消息可能被记录多次（streaming 事件）
 	seenUUIDs := make(map[string]bool)
-	// 值去重：不同 UUID 但相同 (input, output) 的记录也可能是同一次 API 调用
-	seenValues := make(map[[2]int]bool)
 	turnIndex := 0
 	var maxInputTokens int
 
@@ -130,13 +129,6 @@ func (a *Analyzer) AnalyzeSession(jsonlPath string) (*SessionHealth, error) {
 			}
 			seenUUIDs[event.UUID] = true
 		}
-
-		// 值去重：相同 (input, output) 组合视为同一次 API 调用
-		valKey := [2]int{inputTokens, outputTokens}
-		if seenValues[valKey] {
-			continue
-		}
-		seenValues[valKey] = true
 
 		// 分析内容块
 		turn := TurnMetric{
@@ -411,11 +403,7 @@ func getHealthLevel(score int) string {
 
 // sortSessionsByHealth 按健康评分升序排列（最差的在前）
 func sortSessionsByHealth(sessions []SessionHealth) {
-	for i := 0; i < len(sessions)-1; i++ {
-		for j := i + 1; j < len(sessions); j++ {
-			if sessions[j].HealthScore < sessions[i].HealthScore {
-				sessions[i], sessions[j] = sessions[j], sessions[i]
-			}
-		}
-	}
+	sort.Slice(sessions, func(i, j int) bool {
+		return sessions[i].HealthScore < sessions[j].HealthScore
+	})
 }
