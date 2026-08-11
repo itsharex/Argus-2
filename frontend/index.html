@@ -4,17 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Argus</title>
-    <link rel="stylesheet" href="./style.css">
-    <link rel="stylesheet" href="./dashboard.css">
-    <link rel="stylesheet" href="./knowledge.css">
-    <link rel="stylesheet" href="./claudemd-editor.css">
-    <link rel="stylesheet" href="./conversation.css">
-    <link rel="stylesheet" href="./continuity.css">
-    <link rel="stylesheet" href="./plugin-studio.css">
-    <link rel="stylesheet" href="./compliance.css">
-    <link rel="stylesheet" href="./splash.css">
-    <link rel="stylesheet" href="./skills.css">
-    <script src="./chart.umd.min.js"></script>
+    <link rel="stylesheet" href="./core/style.css">
+    <link rel="stylesheet" href="./modules/dashboard/dashboard.css">
+    <link rel="stylesheet" href="./modules/knowledge/knowledge.css">
+    <link rel="stylesheet" href="./modules/claude-md/claudemd-editor.css">
+    <link rel="stylesheet" href="./modules/sessions/conversation.css">
+    <link rel="stylesheet" href="./modules/continuity/continuity.css">
+    <link rel="stylesheet" href="./modules/plugin-studio/plugin-studio.css">
+    <link rel="stylesheet" href="./modules/compliance/compliance.css">
+    <link rel="stylesheet" href="./components/splash/splash.css">
+    <link rel="stylesheet" href="./modules/skills/skills.css">
+    <link rel="stylesheet" href="./modules/agent-tree/agent-tree.css">
+    <link rel="stylesheet" href="./modules/sessions/search.css">
+    <link rel="stylesheet" href="./modules/productivity/productivity.css">
+    <script src="./assets/vendor/chart.umd.min.js"></script>
     <script>
         // 禁用浏览器默认右键菜单（知识库文件项除外）
         document.addEventListener('contextmenu', (e) => {
@@ -32,7 +35,7 @@
         <div class="splash-content">
             <div class="splash-logo-container">
                 <div class="splash-glow"></div>
-                <img src="./appicon.png" alt="Argus" class="splash-logo">
+                <img src="./assets/appicon.png" alt="Argus" class="splash-logo">
                 <div class="splash-pulse"></div>
             </div>
             <h1 class="splash-title">Argus</h1>
@@ -117,10 +120,43 @@
                     <button class="dashboard-subtab" data-subtab="context-health" onclick="switchDashboardSubtab('context-health')">
                         <span data-i18n="contextHealth">上下文健康</span>
                     </button>
+                    <button class="dashboard-subtab" data-subtab="productivity" onclick="switchDashboardSubtab('productivity')">
+                        <span data-i18n="productivity">生产力</span>
+                    </button>
                 </div>
 
                 <!-- Token概览 面板 -->
                 <div class="dashboard-subtab-panel active" id="panel-token-overview">
+                    <!-- 骨架屏加载占位 -->
+                    <div class="token-skeleton" id="tokenSkeleton">
+                        <!-- 概览卡片骨架 -->
+                        <div class="token-skeleton-cards">
+                            <div class="token-skeleton-card"><div class="token-skel-icon"></div><div class="token-skel-lines"><div class="token-skel-line short"></div><div class="token-skel-line long"></div></div></div>
+                            <div class="token-skeleton-card"><div class="token-skel-icon"></div><div class="token-skel-lines"><div class="token-skel-line short"></div><div class="token-skel-line long"></div></div></div>
+                            <div class="token-skeleton-card"><div class="token-skel-icon"></div><div class="token-skel-lines"><div class="token-skel-line short"></div><div class="token-skel-line long"></div></div></div>
+                            <div class="token-skeleton-card"><div class="token-skel-icon"></div><div class="token-skel-lines"><div class="token-skel-line short"></div><div class="token-skel-line long"></div></div></div>
+                            <div class="token-skeleton-card"><div class="token-skel-icon"></div><div class="token-skel-lines"><div class="token-skel-line short"></div><div class="token-skel-line long"></div></div></div>
+                        </div>
+                        <!-- 趋势柱状图骨架 -->
+                        <div class="token-skeleton-chart">
+                            <div class="token-skel-title"></div>
+                            <div class="token-skel-chart-area">
+                                <div class="token-skel-bar" style="height:55%"></div><div class="token-skel-bar" style="height:75%"></div><div class="token-skel-bar" style="height:40%"></div><div class="token-skel-bar" style="height:85%"></div><div class="token-skel-bar" style="height:65%"></div><div class="token-skel-bar" style="height:90%"></div><div class="token-skel-bar" style="height:50%"></div><div class="token-skel-bar" style="height:70%"></div><div class="token-skel-bar" style="height:60%"></div><div class="token-skel-bar" style="height:80%"></div>
+                            </div>
+                        </div>
+                        <!-- 双列表格骨架 -->
+                        <div class="token-skeleton-row2">
+                            <div class="token-skeleton-table">
+                                <div class="token-skel-title"></div>
+                                <div class="token-skel-row"></div><div class="token-skel-row"></div><div class="token-skel-row"></div><div class="token-skel-row"></div><div class="token-skel-row"></div>
+                            </div>
+                            <div class="token-skeleton-table">
+                                <div class="token-skel-title"></div>
+                                <div class="token-skel-row"></div><div class="token-skel-row"></div><div class="token-skel-row"></div><div class="token-skel-row"></div><div class="token-skel-row"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- 实际内容 -->
                 <!-- Overview Cards -->
                 <div class="overview-cards">
                     <div class="overview-card">
@@ -245,6 +281,40 @@
 
                 <!-- 上下文健康 面板 -->
                 <div class="dashboard-subtab-panel" id="panel-context-health">
+                    <!-- 骨架屏加载占位 -->
+                    <div class="ctx-skeleton" id="ctxSkeleton">
+                        <!-- 概览卡片骨架 -->
+                        <div class="ctx-skeleton-cards">
+                            <div class="ctx-skeleton-card"><div class="ctx-skel-icon"></div><div class="ctx-skel-lines"><div class="ctx-skel-line short"></div><div class="ctx-skel-line long"></div></div></div>
+                            <div class="ctx-skeleton-card"><div class="ctx-skel-icon"></div><div class="ctx-skel-lines"><div class="ctx-skel-line short"></div><div class="ctx-skel-line long"></div></div></div>
+                            <div class="ctx-skeleton-card"><div class="ctx-skel-icon"></div><div class="ctx-skel-lines"><div class="ctx-skel-line short"></div><div class="ctx-skel-line long"></div></div></div>
+                            <div class="ctx-skeleton-card"><div class="ctx-skel-icon"></div><div class="ctx-skel-lines"><div class="ctx-skel-line short"></div><div class="ctx-skel-line long"></div></div></div>
+                        </div>
+                        <!-- 趋势图骨架 -->
+                        <div class="ctx-skeleton-chart">
+                            <div class="ctx-skel-title"></div>
+                            <div class="ctx-skel-chart-area">
+                                <div class="ctx-skel-bar" style="height:60%"></div><div class="ctx-skel-bar" style="height:80%"></div><div class="ctx-skel-bar" style="height:45%"></div><div class="ctx-skel-bar" style="height:70%"></div><div class="ctx-skel-bar" style="height:90%"></div><div class="ctx-skel-bar" style="height:55%"></div><div class="ctx-skel-bar" style="height:75%"></div><div class="ctx-skel-bar" style="height:65%"></div>
+                            </div>
+                        </div>
+                        <!-- 环形图 + 表格骨架 -->
+                        <div class="ctx-skeleton-row2">
+                            <div class="ctx-skeleton-doughnut">
+                                <div class="ctx-skel-title"></div>
+                                <div class="ctx-skel-circle"></div>
+                            </div>
+                            <div class="ctx-skeleton-table">
+                                <div class="ctx-skel-title"></div>
+                                <div class="ctx-skel-row"></div><div class="ctx-skel-row"></div><div class="ctx-skel-row"></div><div class="ctx-skel-row"></div><div class="ctx-skel-row"></div>
+                            </div>
+                        </div>
+                        <!-- 效率分析骨架 -->
+                        <div class="ctx-skeleton-efficiency">
+                            <div class="ctx-skel-title"></div>
+                            <div class="ctx-skel-row"></div><div class="ctx-skel-row"></div>
+                        </div>
+                    </div>
+                    <!-- 实际内容 -->
                     <!-- 概览卡片 -->
                     <div class="overview-cards ctx-overview-cards">
                         <div class="overview-card">
@@ -340,7 +410,59 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- 效率分析 -->
+                    <div class="dashboard-row">
+                        <div class="dashboard-card">
+                            <div class="card-title">
+                                <h3 data-i18n="efficiencyAnalysis">效率分析</h3>
+                            </div>
+                            <div id="efficiencyContent" class="efficiency-content">
+                                <div class="efficiency-loading" id="efficiencyLoading">
+                                    <span data-i18n="loading">加载中...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div><!-- /panel-context-health -->
+
+                <!-- 生产力 面板 -->
+                <div class="dashboard-subtab-panel" id="panel-productivity">
+                    <!-- 骨架屏加载占位 -->
+                    <div class="prod-skeleton" id="prodSkeleton">
+                        <!-- KPI 卡片骨架 -->
+                        <div class="prod-skeleton-cards">
+                            <div class="prod-skeleton-card"><div class="prod-skel-line short"></div><div class="prod-skel-line long"></div></div>
+                            <div class="prod-skeleton-card"><div class="prod-skel-line short"></div><div class="prod-skel-line long"></div></div>
+                            <div class="prod-skeleton-card"><div class="prod-skel-line short"></div><div class="prod-skel-line long"></div></div>
+                            <div class="prod-skeleton-card"><div class="prod-skel-line short"></div><div class="prod-skel-line long"></div></div>
+                            <div class="prod-skeleton-card"><div class="prod-skel-line short"></div><div class="prod-skel-line long"></div></div>
+                            <div class="prod-skeleton-card"><div class="prod-skel-line short"></div><div class="prod-skel-line long"></div></div>
+                        </div>
+                        <!-- 双图表区域骨架 -->
+                        <div class="prod-skeleton-charts">
+                            <div class="prod-skeleton-chart-box">
+                                <div class="prod-skel-title"></div>
+                                <div class="prod-skel-chart-area">
+                                    <div class="prod-skel-line-chart"></div>
+                                </div>
+                            </div>
+                            <div class="prod-skeleton-chart-box">
+                                <div class="prod-skel-title"></div>
+                                <div class="prod-skel-chart-area">
+                                    <div class="prod-skel-doughnut"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- 周趋势表格骨架 -->
+                        <div class="prod-skeleton-table">
+                            <div class="prod-skel-title"></div>
+                            <div class="prod-skel-row"></div><div class="prod-skel-row"></div><div class="prod-skel-row"></div><div class="prod-skel-row"></div><div class="prod-skel-row"></div>
+                        </div>
+                    </div>
+                    <!-- 实际内容容器 -->
+                    <div class="prod-content" id="prodContent"></div>
+                </div><!-- /panel-productivity -->
             </div>
         </div>
 
@@ -538,6 +660,15 @@
                             <span data-i18n="fileChanges">文件改动</span>
                             <span id="filesTabCount" class="tab-count">0</span>
                         </button>
+                        <button class="session-tab" data-tab="agentTree" onclick="switchSessionTab('agentTree')">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                <circle cx="9" cy="7" r="4"/>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                            </svg>
+                            <span data-i18n="agentTree">Agent 树</span>
+                        </button>
 
                         <!-- Edit Note Button (right) -->
                         <div id="sessionNoteBtn" class="session-meta-bar-inline" style="display: none; margin-left: auto;">
@@ -614,6 +745,27 @@
                                 <span id="diffFileName" class="diff-filename"></span>
                             </div>
                             <pre id="diffView" class="diff-view"><code data-i18n="selectFile">选择文件查看差异</code></pre>
+                        </div>
+                    </div>
+
+                    <!-- Tab Content: Agent Tree -->
+                    <div id="agentTreeTab" class="session-tab-content" style="display: none;">
+                        <div class="agent-tree-container">
+                            <div class="agent-tree-header">
+                                <h3 data-i18n="agentTree">Agent 树</h3>
+                                <div id="agentTreeStats" class="agent-tree-stats"></div>
+                            </div>
+                            <div id="agentTreeContent" class="agent-tree-scroll">
+                                <div class="agent-tree-empty">
+                                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                        <circle cx="9" cy="7" r="4"/>
+                                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                                    </svg>
+                                    <p data-i18n="selectSession">选择会话查看 Agent 树</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -1004,6 +1156,32 @@
                     </div>
                     <div id="templatesList" class="templates-container"></div>
                 </section>
+
+                <!-- 执行日志 Section -->
+                <section class="config-section">
+                    <div class="config-section-header">
+                        <h3 class="config-section-title" data-i18n="hookExecutionLog">执行日志</h3>
+                        <div class="hook-log-actions">
+                            <button class="btn btn-secondary" onclick="refreshHookLogs()">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="23 4 23 10 17 10"/>
+                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                                </svg>
+                                <span data-i18n="refresh">刷新</span>
+                            </button>
+                            <button class="btn btn-secondary" onclick="clearHookLogs()">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                </svg>
+                                <span data-i18n="clearHookLogs">清空日志</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="hookLogStats" class="hook-log-stats"></div>
+                    <div id="hookLogFilter" class="hook-log-filter"></div>
+                    <div id="hookLogTable" class="hook-log-table"></div>
+                </section>
             </div>
         </div>
 
@@ -1264,6 +1442,42 @@
         </footer>
     </div>
 
+    <!-- Global Search Overlay (Ctrl+K) -->
+    <div id="searchOverlay" class="search-overlay" onclick="if(event.target===this) closeGlobalSearch();">
+        <div class="search-container">
+            <div class="search-input-wrapper">
+                <svg class="search-input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <input type="text" id="globalSearchInput" class="search-input"
+                       data-i18n-placeholder="globalSearchPlaceholder"
+                       placeholder="搜索所有会话内容..."
+                       oninput="onSearchInput(this.value)"
+                       onkeydown="onSearchKeydown(event)">
+                <div class="search-shortcut-hint">
+                    <kbd>ESC</kbd>
+                </div>
+            </div>
+            <div id="searchResults" class="search-results">
+                <div class="search-empty">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <p data-i18n="globalSearchHint">输入关键词搜索所有会话内容</p>
+                </div>
+            </div>
+            <div class="search-footer">
+                <div class="search-footer-hints">
+                    <span class="search-footer-hint"><kbd>↑↓</kbd> <span data-i18n="navigate">导航</span></span>
+                    <span class="search-footer-hint"><kbd>↵</kbd> <span data-i18n="open">打开</span></span>
+                    <span class="search-footer-hint"><kbd>ESC</kbd> <span data-i18n="close">关闭</span></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Settings Modal -->
     <div id="settingsModal" class="modal" style="display: none;">
         <div class="modal-content">
@@ -1376,18 +1590,22 @@
         </div>
     </div>
 
-    <script src="./i18n.js"></script>
-    <script src="./dashboard.js"></script>
-    <script src="./context-health.js"></script>
-    <script src="./app.js"></script>
-    <script src="./knowledge.js"></script>
-    <script src="./claudemd-editor.js"></script>
-    <script src="./claudemd-generator.js"></script>
-    <script src="./conversation.js"></script>
-    <script src="./continuity.js"></script>
-    <script src="./plugin-studio.js"></script>
-    <script src="./compliance.js"></script>
-    <script src="./skills.js"></script>
-    <script src="./resizer.js"></script>
+    <script src="./core/i18n.js"></script>
+    <script src="./modules/dashboard/dashboard.js"></script>
+    <script src="./modules/context-health/context-health.js"></script>
+    <script src="./core/app.js"></script>
+    <script src="./modules/knowledge/knowledge.js"></script>
+    <script src="./modules/claude-md/claudemd-editor.js"></script>
+    <script src="./modules/claude-md/claudemd-generator.js"></script>
+    <script src="./modules/sessions/conversation.js"></script>
+    <script src="./modules/continuity/continuity.js"></script>
+    <script src="./modules/plugin-studio/plugin-studio.js"></script>
+    <script src="./modules/sessions/hook-monitor.js"></script>
+    <script src="./modules/compliance/compliance.js"></script>
+    <script src="./modules/skills/skills.js"></script>
+    <script src="./modules/agent-tree/agent-tree.js"></script>
+    <script src="./modules/sessions/search.js"></script>
+    <script src="./modules/productivity/productivity.js"></script>
+    <script src="./core/resizer.js"></script>
 </body>
 </html>

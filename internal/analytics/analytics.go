@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"argus-desktop/internal/common"
+	"argus-desktop/internal/session/claude"
 )
 
 type Engine struct {
@@ -214,26 +215,6 @@ type sessionRecord struct {
 	InputTokens, OutputTokens           int
 }
 
-type jsonlLine struct {
-	Type      string        `json:"type"`
-	SessionID string        `json:"sessionId"`
-	Timestamp string        `json:"timestamp"`
-	CWD       string        `json:"cwd"`
-	Message   *jsonlMessage `json:"message"`
-}
-
-type jsonlMessage struct {
-	Role    string      `json:"role"`
-	Model   string      `json:"model"`
-	Usage   *jsonlUsage `json:"usage"`
-	Content any         `json:"content"`
-}
-
-type jsonlUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
-}
-
 func (e *Engine) parseJSONL(path, projectDirName string) (*sessionRecord, error) {
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -255,7 +236,7 @@ func (e *Engine) parseJSONL(path, projectDirName string) (*sessionRecord, error)
 		if line == "" {
 			continue
 		}
-		var event jsonlLine
+		var event claude.JSONLLine
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
 			continue
 		}

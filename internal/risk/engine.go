@@ -34,8 +34,8 @@ func (e *Engine) loadDefaultRules() {
 		// 🔴 Danger 规则 (优先级 10-19)
 		{
 			Name:        "delete_file",
-			Description: "删除文件（危险操作）",
-			Level:       session.RiskDanger,
+			Description: "删除文件（需人工审查）",
+			Level:       session.RiskReview,
 			Priority:    10,
 			Check: func(fc session.FileChange) bool {
 				return fc.ChangeType == session.ChangeDeleted
@@ -113,11 +113,11 @@ func (e *Engine) loadDefaultRules() {
 			},
 		},
 
-		// 🟡 Review 规则 (优先级 9-19，需在 delete_file 之前评估)
+		// 🔴 Danger 规则 — 大规模删除（优先级 9，在 delete_file 之前评估）
 		{
 			Name:        "large_deletion",
 			Description: "删除超过 50 行代码",
-			Level:       session.RiskReview,
+			Level:       session.RiskDanger,
 			Priority:    9,
 			Check: func(fc session.FileChange) bool {
 				if fc.ChangeType != session.ChangeDeleted {

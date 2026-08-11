@@ -113,6 +113,10 @@ func (c *Cache) load() {
 
 // save 将缓存写入磁盘。
 func (c *Cache) save() {
+	// 如果 dir 为空（降级缓存），跳过持久化
+	if c.dir == "" {
+		return
+	}
 	data := cacheData{Entries: c.entries}
 	jsonData, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {

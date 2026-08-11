@@ -79,7 +79,7 @@ func (s *MetaStore) load() error {
 	return nil
 }
 
-// save 保存数据到文件
+// save 保存数据到文件（原子写入：先写临时文件，再 rename）
 func (s *MetaStore) save() error {
 	wrapper := struct {
 		Meta map[string]*SessionMeta `json:"meta"`
@@ -94,7 +94,12 @@ func (s *MetaStore) save() error {
 		return err
 	}
 
-	return os.WriteFile(s.filePath, data, 0644)
+	// 原子写入：先写 .tmp 文件，再 rename，避免写入过程中崩溃导致数据损坏
+	tmpPath := s.filePath + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, s.filePath)
 }
 
 // GetMeta 获取会话元数据

@@ -139,6 +139,10 @@ func (e *Engine) extractCWDFromJSONL(path string) string {
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
+	// 使用 64KB 初始缓冲区，最大 4MB，避免 JSONL 行过长导致 token too long 错误
+	const maxScanTokenSize = 4 * 1024 * 1024
+	scanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {

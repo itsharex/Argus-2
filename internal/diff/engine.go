@@ -239,7 +239,8 @@ func findRefBeforeTime(reflog string, t string) string {
 	lines := strings.Split(reflog, "\n")
 	// reflog 是按时间倒序排列的，从最新的到最旧的
 	// 我们需要找到时间在目标时间之前（更旧）的第一个 ref
-	for i := len(lines) - 1; i >= 0; i-- {
+	// 从前往后遍历（最新的先检查），返回最接近目标时间的 ref
+	for i := 0; i < len(lines); i++ {
 		line := lines[i]
 		if line == "" {
 			continue

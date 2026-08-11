@@ -182,8 +182,6 @@ function renderSessionList(sessionData) {
                             <div class="session-model">${session.model || '-'}</div>
                             <div class="session-prompt">${session.prompt || '-'}</div>
                             <div class="session-meta">
-                                <span>${t('files')} ${session.fileCount}</span>
-                                <span>${t('actions')} ${session.actionCount}</span>
                                 <span class="session-time">${formatSessionTime(session.startedAt)}</span>
                             </div>
                         </div>
@@ -741,6 +739,14 @@ function setupEventListeners() {
     // Close settings modal on backdrop click
     document.addEventListener('click', (e) => {
         if (e.target.id === 'settingsModal') closeSettings();
+    });
+
+    // Global search keyboard shortcut (Ctrl+K / Cmd+K)
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+            e.preventDefault();
+            toggleGlobalSearch();
+        }
     });
 }
 

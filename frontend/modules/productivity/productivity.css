@@ -1,0 +1,202 @@
+/* ============================================
+   Productivity Dashboard — 开发者生产力仪表盘
+   ============================================ */
+
+/* KPI 卡片网格 */
+.productivity-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.productivity-kpi-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: border-color 0.2s;
+}
+
+.productivity-kpi-card:hover {
+    border-color: var(--accent);
+}
+
+.productivity-kpi-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.productivity-kpi-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+
+.productivity-kpi-unit {
+    font-size: 11px;
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+/* 图表区域 */
+.productivity-charts-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.productivity-chart-box {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+}
+
+.productivity-chart-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+}
+
+.productivity-chart-container {
+    position: relative;
+    height: 240px;
+}
+
+/* 周趋势表格 */
+.productivity-trend-table-wrapper {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+.productivity-trend-table-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.productivity-trend-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.productivity-trend-table th {
+    text-align: left;
+    padding: 8px 16px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.productivity-trend-table td {
+    padding: 8px 16px;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border);
+}
+
+.productivity-trend-table tr:last-child td {
+    border-bottom: none;
+}
+
+.productivity-trend-table tr:hover td {
+    background: var(--bg-hover);
+}
+
+/* 时段热力图 */
+.productivity-heatmap-grid {
+    display: grid;
+    grid-template-columns: repeat(24, 1fr);
+    gap: 3px;
+    margin-top: 8px;
+}
+
+.productivity-heatmap-cell {
+    aspect-ratio: 1;
+    border-radius: 3px;
+    background: var(--bg-secondary);
+    position: relative;
+}
+
+.productivity-heatmap-cell[data-level="1"] {
+    background: rgba(99, 179, 237, 0.25);
+}
+.productivity-heatmap-cell[data-level="2"] {
+    background: rgba(99, 179, 237, 0.45);
+}
+.productivity-heatmap-cell[data-level="3"] {
+    background: rgba(99, 179, 237, 0.65);
+}
+.productivity-heatmap-cell[data-level="4"] {
+    background: rgba(99, 179, 237, 0.85);
+}
+
+.productivity-heatmap-labels {
+    display: grid;
+    grid-template-columns: repeat(24, 1fr);
+    gap: 3px;
+    margin-top: 4px;
+}
+
+.productivity-heatmap-label {
+    font-size: 9px;
+    color: var(--text-secondary);
+    text-align: center;
+    opacity: 0.6;
+}
+
+/* 空状态 */
+.productivity-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    color: var(--text-secondary);
+    gap: 12px;
+}
+
+.productivity-empty svg {
+    opacity: 0.4;
+}
+
+.productivity-empty p {
+    font-size: 13px;
+}
+
+/* 加载状态 */
+.productivity-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+    .productivity-charts-row {
+        grid-template-columns: 1fr;
+    }
+
+    .productivity-kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}

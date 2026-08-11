@@ -2,6 +2,7 @@ package session
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -114,11 +115,7 @@ func (idx *Index) BuiltAt() time.Time {
 
 // sortByModTime 按修改时间倒序排列 sessionID 列表
 func sortByModTime(entries map[string]*IndexEntry, ids []string) {
-	for i := 0; i < len(ids)-1; i++ {
-		for j := i + 1; j < len(ids); j++ {
-			if entries[ids[j]].ModTime.After(entries[ids[i]].ModTime) {
-				ids[i], ids[j] = ids[j], ids[i]
-			}
-		}
-	}
+	sort.Slice(ids, func(i, j int) bool {
+		return entries[ids[i]].ModTime.After(entries[ids[j]].ModTime)
+	})
 }

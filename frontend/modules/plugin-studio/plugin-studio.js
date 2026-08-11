@@ -30,6 +30,9 @@ async function initPluginStudio() {
         renderHooksList();
         renderMCPServersList();
         renderTemplatesList();
+
+        // 初始化 Hook 执行日志监控
+        initHookMonitor();
     } catch (error) {
         console.error('Failed to initialize plugin studio:', error);
         showToast(t('initFailed') || '初始化失败');

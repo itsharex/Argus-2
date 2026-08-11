@@ -56,9 +56,23 @@ type FileChange struct {
 
 // TokenUsage 记录 token 消耗
 type TokenUsage struct {
-	InputTokens  int
-	OutputTokens int
-	TotalTokens  int
+	InputTokens         int
+	OutputTokens        int
+	TotalTokens         int
+	CacheReadTokens     int // 缓存读取 token（prompt caching）
+	CacheCreationTokens int // 缓存创建 token（prompt caching）
+}
+
+// AgentInfo 记录单个 Agent 的元数据（从 JSONL 中提取）
+type AgentInfo struct {
+	UUID         string    // 消息 UUID
+	AgentID      string    // Agent 标识符（可能为空）
+	ParentUUID   string    // 父消息 UUID
+	Type         string    // 消息类型（user / assistant）
+	InputTokens  int       // 输入 token
+	OutputTokens int       // 输出 token
+	ToolCalls    int       // 工具调用次数
+	Timestamp    time.Time // 时间戳
 }
 
 // Session 一次 Agent 会话
@@ -75,4 +89,5 @@ type Session struct {
 	FileChanges []FileChange
 	TokenUsage  TokenUsage
 	Messages    []Message    // 完整消息历史
+	Agents      []AgentInfo  // 所有 Agent 消息（用于构建 Agent 树）
 }

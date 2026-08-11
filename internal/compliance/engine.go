@@ -22,8 +22,8 @@ func NewEngine(cfg llm.ProviderConfig) *Engine {
 	cache, err := NewCache()
 	if err != nil {
 		log.Printf("合规审计缓存初始化失败: %v", err)
-		// 使用空缓存继续
-		cache = &Cache{entries: make(map[string]*CacheEntry)}
+		// 使用空缓存继续（仅内存，不持久化到磁盘）
+		cache = &Cache{dir: "", entries: make(map[string]*CacheEntry)}
 	}
 
 	return &Engine{

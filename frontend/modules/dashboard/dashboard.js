@@ -2,6 +2,7 @@
 // Dashboard — Token Analytics page logic
 
 let trendChart = null;
+let dashboardLoaded = false;
 
 // ---- 子窗口 Tab 切换 ----
 
@@ -18,10 +19,20 @@ function switchDashboardSubtab(tabId) {
     if (tabId === 'context-health' && typeof loadContextHealth === 'function') {
         loadContextHealth();
     }
+    if (tabId === 'productivity' && typeof loadProductivity === 'function') {
+        loadProductivity();
+    }
 }
 
 // Load and render the full dashboard
 async function loadDashboard() {
+    const skeleton = document.getElementById('tokenSkeleton');
+
+    // 首次加载时显示骨架屏
+    if (!dashboardLoaded && skeleton) {
+        skeleton.classList.remove('hidden', 'fading-out');
+    }
+
     try {
         const overview = await window.go.main.App.GetTokenOverview();
         if (!overview) return;
@@ -39,12 +50,41 @@ async function loadDashboard() {
         }, null, 2));
 
         renderOverviewCards(overview);
-        renderTrendChart(overview.dailyTrend);
+        renderTokenTrendChart(overview.dailyTrend);
         renderProjectTable(overview.projectBreakdown);
         renderModelTable(overview.modelBreakdown);
+
+        dashboardLoaded = true;
     } catch (error) {
         console.error('Failed to load dashboard:', error);
+    } finally {
+        hideDashboardSkeleton(skeleton);
     }
+}
+
+/**
+ * 隐藏骨架屏（带淡出动画）
+ * @param {HTMLElement|null} skeleton
+ */
+function hideDashboardSkeleton(skeleton) {
+    if (!skeleton || skeleton.classList.contains('hidden')) return;
+
+    skeleton.classList.add('fading-out');
+
+    const onTransitionEnd = function() {
+        skeleton.removeEventListener('transitionend', onTransitionEnd);
+        skeleton.classList.add('hidden');
+        skeleton.classList.remove('fading-out');
+    };
+    skeleton.addEventListener('transitionend', onTransitionEnd);
+
+    // 兜底：500ms 后强制隐藏
+    setTimeout(() => {
+        if (!skeleton.classList.contains('hidden')) {
+            skeleton.classList.add('hidden');
+            skeleton.classList.remove('fading-out');
+        }
+    }, 500);
 }
 
 // ---- Overview Cards ----
@@ -70,7 +110,7 @@ function renderOverviewCards(data) {
 
 // ---- Trend Chart (Chart.js) - Apple/Google 风格 ----
 
-function renderTrendChart(dailyTrend) {
+function renderTokenTrendChart(dailyTrend) {
     if (!dailyTrend || dailyTrend.length === 0) {
         console.warn('[Dashboard] dailyTrend is empty or null');
         return;

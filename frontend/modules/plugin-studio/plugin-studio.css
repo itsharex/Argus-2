@@ -550,3 +550,290 @@
         flex: 1 1 100%;
     }
 }
+
+/* ============================================
+   Hook 执行日志
+   ============================================ */
+
+.hook-log-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.hook-log-actions .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+}
+
+/* 统计卡片网格 */
+.hook-log-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.hook-stat-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+    transition: all 0.2s;
+}
+
+.hook-stat-card:hover {
+    border-color: var(--accent-color);
+}
+
+.hook-stat-card.hook-stat-warning {
+    border-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.05);
+}
+
+.hook-stat-card.hook-stat-danger {
+    border-color: #ef4444;
+    background: rgba(239, 68, 68, 0.05);
+}
+
+.hook-stat-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+
+.hook-stat-card.hook-stat-warning .hook-stat-value {
+    color: #f59e0b;
+}
+
+.hook-stat-card.hook-stat-danger .hook-stat-value {
+    color: #ef4444;
+}
+
+.hook-stat-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
+/* 过滤器 */
+.hook-log-filter {
+    margin-bottom: 12px;
+}
+
+.hook-log-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.hook-filter-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.hook-filter-options {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.hook-filter-btn {
+    padding: 4px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.hook-filter-btn:hover {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.hook-filter-btn.hook-filter-active {
+    background: var(--accent-color);
+    color: white;
+    border-color: var(--accent-color);
+}
+
+/* 日志表格 */
+.hook-log-table-wrapper {
+    overflow-x: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.hook-log-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.hook-log-table thead {
+    background: var(--bg-secondary);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.hook-log-table th {
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
+.hook-log-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+}
+
+.hook-log-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.hook-log-table tbody tr:hover {
+    background: var(--bg-secondary);
+}
+
+.hook-log-row-failure {
+    background: rgba(239, 68, 68, 0.04) !important;
+}
+
+.hook-log-row-failure:hover {
+    background: rgba(239, 68, 68, 0.08) !important;
+}
+
+/* 时间列 */
+.hook-log-time {
+    white-space: nowrap;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+/* 匹配器列 */
+.hook-log-matcher code {
+    background: var(--bg-tertiary);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+/* 命令列 */
+.hook-log-command {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.hook-log-command code {
+    background: var(--bg-tertiary);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 耗时列 */
+.hook-log-duration {
+    white-space: nowrap;
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* 来源列 */
+.hook-log-source {
+    white-space: nowrap;
+}
+
+.hook-source-tag {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+
+/* Hook 类型标签 */
+.hook-type-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.hook-type-pre {
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
+}
+
+.hook-type-post {
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+}
+
+.hook-type-stop {
+    background: rgba(245, 158, 11, 0.1);
+    color: #f59e0b;
+}
+
+.hook-type-notification {
+    background: rgba(139, 92, 246, 0.1);
+    color: #8b5cf6;
+}
+
+/* 状态标签 */
+.hook-status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.hook-status-success {
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+}
+
+.hook-status-failure {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+    .hook-log-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .hook-log-filter-bar {
+        flex-wrap: wrap;
+    }
+}
+
+@media (max-width: 480px) {
+    .hook-log-stats-grid {
+        grid-template-columns: 1fr;
+    }
+}

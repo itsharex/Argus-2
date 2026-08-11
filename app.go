@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"argus-desktop/internal/agenttrace"
 	"argus-desktop/internal/analytics"
 	"argus-desktop/internal/common"
 	"argus-desktop/internal/compliance"
@@ -18,11 +19,14 @@ import (
 	"argus-desktop/internal/continuity"
 	"argus-desktop/internal/diff"
 	"argus-desktop/internal/export"
+	"argus-desktop/internal/hookmonitor"
 	"argus-desktop/internal/knowledge"
 	"argus-desktop/internal/llm"
 	"argus-desktop/internal/monitor"
 	"argus-desktop/internal/plugin"
+	"argus-desktop/internal/productivity"
 	"argus-desktop/internal/risk"
+	"argus-desktop/internal/search"
 	"argus-desktop/internal/session"
 	"argus-desktop/internal/session/claude"
 	"argus-desktop/internal/settings"
@@ -33,8 +37,10 @@ import (
 
 // App struct
 type App struct {
-	ctx          context.Context
-	monitor      *monitor.Monitor
+	ctx            context.Context
+	shutdownCtx    context.Context    // 全局关闭信号，级联取消所有后台 goroutine
+	shutdownCancel context.CancelFunc // 触发全局关闭
+	monitor        *monitor.Monitor
 	monitorMu    sync.RWMutex // 保护 monitor 字段的并发访问
 	settingsMgr  *settings.Manager
 	analytics    *analytics.Engine
@@ -44,7 +50,11 @@ type App struct {
 	continuityMu sync.RWMutex // 保护 continuity 字段的并发访问
 	plugin       *plugin.Engine
 	skills       *skills.Engine
-	llmCfg       *llm.ProviderConfig // LLM 配置（用于合规审计）
+	llmCfg       *llm.ProviderConfig     // LLM 配置（用于合规审计）
+	agentTrace   *agenttrace.Engine      // Agent 追踪引擎
+	hookMonitor  *hookmonitor.Engine     // Hook 执行日志监控引擎
+	searchEngine *search.Engine          // 全文搜索引擎
+	productivity *productivity.Engine    // 生产力分析引擎
 
 	// 会话索引（轻量级内存索引，避免每次 O(n×m) 遍历）
 	sessionIndex *session.Index
@@ -58,6 +68,10 @@ type App struct {
 	ctxHealthCache     *contexthealth.OverviewHealth
 	ctxHealthCacheMu   sync.RWMutex
 	ctxHealthCacheTime time.Time
+
+	// 全局效率报告缓存
+	ctxEfficiencyCache     *contexthealth.EfficiencyReport
+	ctxEfficiencyCacheTime time.Time
 }
 
 // SessionInfo 会话简要信息（用于列表展示）
@@ -133,6 +147,7 @@ func NewApp() *App {
 // startup is called when the app starts
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.shutdownCtx, a.shutdownCancel = context.WithCancel(context.Background())
 
 	// 初始化设置管理器
 	mgr, err := settings.NewManager()
@@ -207,6 +222,43 @@ func (a *App) startup(ctx context.Context) {
 		a.skills = skillsEngine
 	}
 
+	// 初始化 Agent 追踪引擎
+	a.agentTrace = agenttrace.NewEngine()
+
+	// 初始化 Hook 执行日志监控引擎
+	hookMonitorEngine, err := hookmonitor.NewEngine(func(alert hookmonitor.AlertEvent) {
+		// 告警回调：通过 Wails 事件推送到前端
+		if a.ctx != nil {
+			runtime.EventsEmit(a.ctx, "hook-alert", map[string]interface{}{
+				"type":       alert.Type,
+				"count":      alert.Count,
+				"hookType":   alert.HookType,
+				"lastErrors": alert.LastErrors,
+			})
+		}
+	})
+	if err != nil {
+		log.Printf("WARN: Hook 监控引擎初始化失败: %v", err)
+	} else {
+		a.hookMonitor = hookMonitorEngine
+	}
+
+	// 初始化全文搜索引擎
+	searchEngine, err := search.NewEngine()
+	if err != nil {
+		log.Printf("WARN: 全文搜索引擎初始化失败: %v", err)
+	} else {
+		a.searchEngine = searchEngine
+	}
+
+	// 初始化生产力分析引擎
+	productivityEngine, err := productivity.NewEngine()
+	if err != nil {
+		log.Printf("WARN: 生产力分析引擎初始化失败: %v", err)
+	} else {
+		a.productivity = productivityEngine
+	}
+
 	// 构建会话索引（轻量级，仅读取文件名和修改时间）
 	a.sessionIndex = session.NewIndex()
 	if err := a.sessionIndex.Build(); err != nil {
@@ -216,12 +268,23 @@ func (a *App) startup(ctx context.Context) {
 
 // shutdown 在应用退出时清理资源（关闭 Monitor 等）
 func (a *App) shutdown(ctx context.Context) {
+	// 首先触发全局关闭信号，通知所有后台 goroutine 退出
+	if a.shutdownCancel != nil {
+		a.shutdownCancel()
+	}
+
 	a.monitorMu.Lock()
 	if a.monitor != nil {
 		a.monitor.Stop()
 		a.monitor = nil
 	}
 	a.monitorMu.Unlock()
+
+	// 关闭 Hook 监控引擎
+	if a.hookMonitor != nil {
+		a.hookMonitor.Close()
+		a.hookMonitor = nil
+	}
 }
 
 // GetSessions 获取所有会话列表
@@ -854,6 +917,9 @@ func (a *App) SaveLLMConfig(provider, apiKey, baseURL, model string, enabled boo
 		return fmt.Errorf("重建连续性引擎失败: %w", err)
 	}
 
+	// 更新 llmCfg 字段，确保合规审计使用最新配置
+	a.llmCfg = llmCfg
+
 	return nil
 }
 
@@ -1164,6 +1230,52 @@ func (a *App) GetSessionContextHealth(sessionID string) (*contexthealth.SessionH
 
 	analyzer := contexthealth.NewAnalyzer()
 	return analyzer.AnalyzeSession(sessionPath)
+}
+
+// GetContextEfficiencyReport 获取单个会话的上下文效率报告
+func (a *App) GetContextEfficiencyReport(sessionID string) (*contexthealth.EfficiencyReport, error) {
+	sessionPath, err := a.findSessionPath(sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("获取用户目录失败: %w", err)
+	}
+	claudeDir := filepath.Join(homeDir, ".claude")
+
+	ea := contexthealth.NewEfficiencyAnalyzer()
+	return ea.AnalyzeSessionEfficiency(sessionPath, claudeDir)
+}
+
+// GetGlobalEfficiencyReport 获取全局上下文效率报告（带缓存，30秒内复用）
+func (a *App) GetGlobalEfficiencyReport() (*contexthealth.EfficiencyReport, error) {
+	a.ctxHealthCacheMu.RLock()
+	if a.ctxEfficiencyCache != nil && time.Since(a.ctxEfficiencyCacheTime) < 30*time.Second {
+		defer a.ctxHealthCacheMu.RUnlock()
+		return a.ctxEfficiencyCache, nil
+	}
+	a.ctxHealthCacheMu.RUnlock()
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("获取用户目录失败: %w", err)
+	}
+	claudeDir := filepath.Join(homeDir, ".claude")
+
+	ea := contexthealth.NewEfficiencyAnalyzer()
+	result, err := ea.AnalyzeGlobalEfficiency(claudeDir)
+	if err != nil {
+		return nil, err
+	}
+
+	a.ctxHealthCacheMu.Lock()
+	a.ctxEfficiencyCache = result
+	a.ctxEfficiencyCacheTime = time.Now()
+	a.ctxHealthCacheMu.Unlock()
+
+	return result, nil
 }
 
 // ============================================
@@ -2165,4 +2277,94 @@ func (a *App) getAllSessions(limit int) ([]*session.Session, error) {
 	}
 
 	return sessions, nil
+}
+
+// ============================================
+// Agent Trace APIs (Agent 追踪)
+// ============================================
+
+// GetSessionAgentTree 获取会话的 Agent 调用树
+func (a *App) GetSessionAgentTree(sessionID string) (*agenttrace.AgentTree, error) {
+	if sessionID == "" {
+		return nil, fmt.Errorf("会话 ID 不能为空")
+	}
+
+	sess, err := a.getSessionByID(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("获取会话失败: %w", err)
+	}
+
+	tree := a.agentTrace.BuildTree(sess)
+	return tree, nil
+}
+
+// GetAgentDetail 获取单个 Agent 的详细信息
+func (a *App) GetAgentDetail(sessionID, agentID string) (*agenttrace.AgentNode, error) {
+	if sessionID == "" || agentID == "" {
+		return nil, fmt.Errorf("会话 ID 和 Agent ID 不能为空")
+	}
+
+	sess, err := a.getSessionByID(sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("获取会话失败: %w", err)
+	}
+
+	tree := a.agentTrace.BuildTree(sess)
+	node := agenttrace.GetAgentDetail(tree, agentID)
+	if node == nil {
+		return nil, fmt.Errorf("未找到 Agent: %s", agentID)
+	}
+
+	return node, nil
+}
+
+// ============================================
+// Global Search APIs (跨项目全局搜索)
+// ============================================
+
+// GlobalSearch 全文搜索所有会话内容（跨项目）
+func (a *App) GlobalSearch(req search.SearchRequest) ([]search.FullTextResult, error) {
+	if a.searchEngine == nil {
+		return nil, fmt.Errorf("搜索引擎未初始化")
+	}
+	if req.Keyword == "" {
+		return nil, fmt.Errorf("搜索关键词不能为空")
+	}
+	return a.searchEngine.Search(req)
+}
+
+// RebuildSearchIndex 重建搜索索引
+func (a *App) RebuildSearchIndex() error {
+	if a.searchEngine == nil {
+		return fmt.Errorf("搜索引擎未初始化")
+	}
+	return a.searchEngine.RebuildIndex()
+}
+
+// GetSearchIndexStatus 获取搜索索引状态
+func (a *App) GetSearchIndexStatus() (*search.IndexStatus, error) {
+	if a.searchEngine == nil {
+		return nil, fmt.Errorf("搜索引擎未初始化")
+	}
+	return a.searchEngine.GetStatus()
+}
+
+// ============================================
+// Productivity APIs (开发者生产力仪表盘)
+// ============================================
+
+// GetProductivityReport 获取生产力分析报告
+func (a *App) GetProductivityReport(days int) (*productivity.ProductivityReport, error) {
+	if a.productivity == nil {
+		return nil, fmt.Errorf("生产力分析引擎未初始化")
+	}
+	return a.productivity.Analyze(days)
+}
+
+// GetProductivityTrend 获取生产力周趋势数据
+func (a *App) GetProductivityTrend(weeks int) ([]productivity.WeeklyProductivity, error) {
+	if a.productivity == nil {
+		return nil, fmt.Errorf("生产力分析引擎未初始化")
+	}
+	return a.productivity.GetTrend(weeks)
 }

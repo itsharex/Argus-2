@@ -442,7 +442,10 @@ func (e *Engine) GetAvailableProjects() ([]ProjectInfo, error) {
 	return projects, nil
 }
 
-// loadProjectSessions 加载项目的所有会话
+// maxLoadSessions 单次加载会话的最大数量，防止内存压力过大
+const maxLoadSessions = 50
+
+// loadProjectSessions 加载项目的最近会话（按修改时间排序，最多 maxLoadSessions 个）
 func (e *Engine) loadProjectSessions(projectDir string) ([]*session.Session, error) {
 	claudeDir := filepath.Join(e.homeDir, ".claude", "projects", projectDir)
 	if _, err := os.Stat(claudeDir); os.IsNotExist(err) {
@@ -454,11 +457,32 @@ func (e *Engine) loadProjectSessions(projectDir string) ([]*session.Session, err
 		return nil, fmt.Errorf("查找会话文件失败: %w", err)
 	}
 
+	// 按修改时间排序，最新的在前，限制加载数量
+	type fileWithTime struct {
+		path    string
+		modTime time.Time
+	}
+	var sortedFiles []fileWithTime
+	for _, f := range jsonlFiles {
+		fi, err := os.Stat(f)
+		if err != nil {
+			continue
+		}
+		sortedFiles = append(sortedFiles, fileWithTime{path: f, modTime: fi.ModTime()})
+	}
+	sort.Slice(sortedFiles, func(i, j int) bool {
+		return sortedFiles[i].modTime.After(sortedFiles[j].modTime)
+	})
+
+	if len(sortedFiles) > maxLoadSessions {
+		sortedFiles = sortedFiles[:maxLoadSessions]
+	}
+
 	var sessions []*session.Session
 	reader := claude.NewReader()
 
-	for _, jsonlPath := range jsonlFiles {
-		sess, err := reader.Read(jsonlPath)
+	for _, f := range sortedFiles {
+		sess, err := reader.Read(f.path)
 		if err != nil {
 			continue // 跳过解析失败的会话
 		}

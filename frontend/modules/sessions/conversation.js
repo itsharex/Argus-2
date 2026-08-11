@@ -7,7 +7,6 @@
 
 let conversationMessages = [];
 let isLoadingConversation = false;
-let currentSessionID = '';
 let currentSessionTab = 'conversation';
 
 // ============================================
@@ -16,7 +15,7 @@ let currentSessionTab = 'conversation';
 
 /**
  * 切换会话标签页
- * @param {string} tabName - 标签页名称 ('conversation', 'files')
+ * @param {string} tabName - 标签页名称 ('conversation', 'files', 'agentTree')
  */
 function switchSessionTab(tabName) {
     currentSessionTab = tabName;
@@ -37,6 +36,11 @@ function switchSessionTab(tabName) {
         targetTab.style.display = 'flex';
         targetTab.classList.add('active');
     }
+
+    // 切换到 Agent 树标签时加载数据
+    if (tabName === 'agentTree' && currentSessionId) {
+        loadAgentTree(currentSessionId);
+    }
 }
 
 // ============================================
@@ -50,7 +54,6 @@ function switchSessionTab(tabName) {
 async function loadConversation(sessionID) {
     if (isLoadingConversation) return;
 
-    currentSessionID = sessionID;
     isLoadingConversation = true;
 
     const container = document.getElementById('conversationList');

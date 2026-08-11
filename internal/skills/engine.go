@@ -1,6 +1,8 @@
 package skills
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -552,33 +554,32 @@ func (e *Engine) findProjectRootFromSessions(projectDir string) string {
 		return ""
 	}
 
-	// 读取第一个 JSONL 文件提取 cwd
-	content, err := os.ReadFile(jsonlFiles[0])
+	// 读取第一个 JSONL 文件，使用 JSON 解析提取 cwd 字段
+	file, err := os.Open(jsonlFiles[0])
 	if err != nil {
 		return ""
 	}
+	defer file.Close()
 
-	// 简单查找 "cwd" 字段
-	contentStr := string(content)
-	cwdIdx := strings.Index(contentStr, `"cwd"`)
-	if cwdIdx == -1 {
-		return ""
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" || !strings.Contains(line, `"cwd"`) {
+			continue
+		}
+
+		var event struct {
+			CWD string `json:"cwd"`
+		}
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			continue
+		}
+		if event.CWD != "" {
+			return event.CWD
+		}
 	}
 
-	// 提取 cwd 值
-	start := strings.Index(contentStr[cwdIdx:], `:"`)
-	if start == -1 {
-		return ""
-	}
-	start += cwdIdx + 2
-
-	end := strings.Index(contentStr[start:], `"`)
-	if end == -1 {
-		return ""
-	}
-
-	cwd := contentStr[start : start+end]
-	return cwd
+	return ""
 }
 
 // validatePath 验证文件路径是否在允许的目录内
@@ -604,14 +605,10 @@ func (e *Engine) validatePath(path string) error {
 		if err != nil {
 			continue
 		}
-		// 确保目录分隔符在末尾，避免前缀匹配绕过
-		if !strings.HasSuffix(absDir, string(filepath.Separator)) {
-			absDir += string(filepath.Separator)
-		}
-		if !strings.HasSuffix(absPath, string(filepath.Separator)) {
-			absPath += string(filepath.Separator)
-		}
-		if strings.HasPrefix(absPath, absDir) {
+		// 使用 filepath.Clean 标准化路径，确保分隔符一致并追加分隔符避免前缀匹配绕过
+		absDir = filepath.Clean(absDir) + string(filepath.Separator)
+		cleanPath := filepath.Clean(absPath) + string(filepath.Separator)
+		if strings.HasPrefix(cleanPath, absDir) {
 			return nil
 		}
 	}

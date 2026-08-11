@@ -147,74 +147,60 @@ func (e *Engine) RenameDocument(path string, newName string) (string, error) {
 		return "", err
 	}
 
-	// 按行处理，精确替换 frontmatter 中的 name 字段
-	lines := strings.Split(string(content), "\n")
-	var result []string
-	inFrontmatter := false
-	frontmatterStart := -1
-	frontmatterEnd := -1
+	contentStr := string(content)
 
-	// 找到 frontmatter 的范围
-	for i, line := range lines {
-		if i == 0 && strings.TrimSpace(line) == "---" {
-			inFrontmatter = true
-			frontmatterStart = i
-			continue
-		}
-		if inFrontmatter && strings.TrimSpace(line) == "---" {
-			frontmatterEnd = i
-			inFrontmatter = false
-			break
-		}
-	}
+	// 使用 ParseFrontmatter 解析 YAML frontmatter
+	_, body := ParseFrontmatter(contentStr)
 
-	// 如果没有找到有效的 frontmatter，返回错误
-	if frontmatterStart == -1 || frontmatterEnd == -1 {
+	// 如果文件没有 frontmatter（body == contentStr），返回错误
+	if body == contentStr {
 		return "", fmt.Errorf("文件没有有效的 frontmatter")
 	}
 
-	// 复制 frontmatter 开始之前的行（空）
-	result = append(result, lines[:frontmatterStart]...)
-	// 添加开始的 ---
-	result = append(result, lines[frontmatterStart])
+	// 找到 frontmatter 结束位置（第二个 ---）
+	fmEnd := strings.Index(contentStr[3:], "---")
+	if fmEnd == -1 {
+		return "", fmt.Errorf("文件没有有效的 frontmatter")
+	}
+	fmEnd += 3 // 补偿前面跳过的3个字符
+	fmEnd += 3 // 包括结束的 ---
 
-	// 处理 frontmatter 内部的行
+	fmSection := contentStr[0:fmEnd]
+	afterFM := contentStr[fmEnd:]
+
+	// 替换或添加 frontmatter 中的 name 字段
+	lines := strings.Split(fmSection, "\n")
+	var newFM []string
 	nameFound := false
-	for i := frontmatterStart + 1; i < frontmatterEnd; i++ {
-		line := lines[i]
+
+	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
-		// 检查是否是 name 字段（顶层的，不是嵌套的）
+		// 检查顶层 name 字段（不以空格或 tab 开头）
 		if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
 			parts := strings.SplitN(trimmed, ":", 2)
 			if len(parts) == 2 && strings.TrimSpace(parts[0]) == "name" {
-				// 替换 name 字段的值
-				result = append(result, "name: "+newName)
+				newFM = append(newFM, "name: "+newName)
 				nameFound = true
 				continue
 			}
 		}
-
-		result = append(result, line)
+		newFM = append(newFM, line)
 	}
 
-	// 如果没有找到 name 字段，在 frontmatter 开头添加
+	// 如果没找到 name 字段，在 --- 后插入
 	if !nameFound {
-		// 在 frontmatter 开始的 --- 后面插入 name 字段
-		temp := make([]string, 0, len(result)+1)
-		temp = append(temp, result[:frontmatterStart+1]...)
-		temp = append(temp, "name: "+newName)
-		temp = append(temp, result[frontmatterStart+1:]...)
-		result = temp
+		// 在第一行 --- 之后插入
+		rest := make([]string, len(newFM))
+		copy(rest, newFM)
+		newFM = []string{newFM[0], "name: " + newName}
+		newFM = append(newFM, rest[1:]...)
 	}
 
-	// 添加结束的 ---
-	result = append(result, lines[frontmatterEnd])
-	// 添加 frontmatter 之后的所有行
-	result = append(result, lines[frontmatterEnd+1:]...)
+	updatedContent := strings.Join(newFM, "\n") + afterFM
 
 	// 写入文件内容（更新 frontmatter）
-	if err := os.WriteFile(path, []byte(strings.Join(result, "\n")), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(updatedContent), 0644); err != nil {
 		return "", fmt.Errorf("更新文件内容失败: %w", err)
 	}
 
@@ -264,15 +250,11 @@ func (e *Engine) validatePath(path string) error {
 		if err != nil {
 			continue
 		}
-		// 确保目录分隔符在末尾，避免前缀匹配绕过
-		// 例如：/home/user/.claude-evil 不能匹配 /home/user/.claude
-		if !strings.HasSuffix(absDir, string(filepath.Separator)) {
-			absDir += string(filepath.Separator)
-		}
-		if !strings.HasSuffix(absPath, string(filepath.Separator)) {
-			absPath += string(filepath.Separator)
-		}
-		if strings.HasPrefix(absPath, absDir) {
+		// 使用 filepath.Clean 标准化路径，确保分隔符一致
+		// 追加分隔符避免前缀匹配绕过（如 /home/user/.claude-evil 不能匹配 /home/user/.claude）
+		absDir = filepath.Clean(absDir) + string(filepath.Separator)
+		cleanPath := filepath.Clean(absPath) + string(filepath.Separator)
+		if strings.HasPrefix(cleanPath, absDir) {
 			return nil
 		}
 	}

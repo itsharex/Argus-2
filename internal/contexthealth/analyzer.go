@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"argus-desktop/internal/session/claude"
 )
 
 // Analyzer 上下文健康分析器
@@ -16,28 +18,6 @@ type Analyzer struct{}
 // NewAnalyzer 创建分析器
 func NewAnalyzer() *Analyzer {
 	return &Analyzer{}
-}
-
-// --- JSONL 原始模型（与 analytics 包独立，避免循环依赖）---
-
-type jsonlLine struct {
-	Type      string        `json:"type"`
-	UUID      string        `json:"uuid"`
-	SessionID string        `json:"sessionId"`
-	Timestamp string        `json:"timestamp"`
-	Message   *jsonlMessage `json:"message"`
-}
-
-type jsonlMessage struct {
-	Role    string      `json:"role"`
-	Model   string      `json:"model"`
-	Usage   *jsonlUsage `json:"usage"`
-	Content any         `json:"content"`
-}
-
-type jsonlUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
 }
 
 // --- 上下文窗口限制（token）---
@@ -96,7 +76,7 @@ func (a *Analyzer) AnalyzeSession(jsonlPath string) (*SessionHealth, error) {
 			continue
 		}
 
-		var event jsonlLine
+		var event claude.JSONLLine
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
 			continue
 		}
@@ -132,10 +112,12 @@ func (a *Analyzer) AnalyzeSession(jsonlPath string) (*SessionHealth, error) {
 
 		// 分析内容块
 		turn := TurnMetric{
-			TurnIndex:    turnIndex,
-			InputTokens:  inputTokens,
-			OutputTokens: outputTokens,
-			Timestamp:    event.Timestamp,
+			TurnIndex:           turnIndex,
+			InputTokens:         inputTokens,
+			OutputTokens:        outputTokens,
+			CacheReadTokens:     event.Message.Usage.CacheReadTokens,
+			CacheCreationTokens: event.Message.Usage.CacheCreationTokens,
+			Timestamp:           event.Timestamp,
 		}
 
 		// 解析 content 块
@@ -179,6 +161,20 @@ func (a *Analyzer) AnalyzeSession(jsonlPath string) (*SessionHealth, error) {
 
 	if health.ContextLimit > 0 {
 		health.ContextUsagePct = float64(health.MaxContextUsed) / float64(health.ContextLimit) * 100
+	}
+
+	// 计算缓存统计
+	var totalCacheRead, totalCacheWrite, totalInput int
+	for _, t := range health.Turns {
+		totalCacheRead += t.CacheReadTokens
+		totalCacheWrite += t.CacheCreationTokens
+		totalInput += t.InputTokens
+	}
+	health.TotalCacheReadTokens = totalCacheRead
+	health.TotalCacheWriteTokens = totalCacheWrite
+	cacheDenom := totalCacheRead + totalCacheWrite + totalInput
+	if cacheDenom > 0 {
+		health.CacheHitRate = float64(totalCacheRead) / float64(cacheDenom) * 100
 	}
 
 	// 检测上下文压缩事件（input_tokens 大幅下降 >50%）
@@ -265,6 +261,8 @@ func (a *Analyzer) AnalyzeOverview(claudeDir string) (*OverviewHealth, error) {
 	totalCtxUsage := 0.0
 	maxCtxUsage := 0.0
 	totalScore := 0.0
+	totalCacheHitRate := 0.0
+	cacheHitSessions := 0
 
 	for _, s := range allSessions {
 		totalCtxUsage += s.ContextUsagePct
@@ -278,11 +276,19 @@ func (a *Analyzer) AnalyzeOverview(claudeDir string) (*OverviewHealth, error) {
 		if s.ContextUsagePct > 80 {
 			overview.CriticalCount++
 		}
+		// 聚合缓存命中率（仅统计有缓存数据的会话）
+		if s.TotalCacheReadTokens+s.TotalCacheWriteTokens > 0 {
+			totalCacheHitRate += s.CacheHitRate
+			cacheHitSessions++
+		}
 	}
 
 	overview.AvgContextUsage = totalCtxUsage / float64(len(allSessions))
 	overview.MaxContextUsage = maxCtxUsage
 	overview.AvgHealthScore = totalScore / float64(len(allSessions))
+	if cacheHitSessions > 0 {
+		overview.AvgCacheHitRate = totalCacheHitRate / float64(cacheHitSessions)
+	}
 
 	// 按健康评分升序排列，取最需关注的前 10 个
 	sortSessionsByHealth(allSessions)

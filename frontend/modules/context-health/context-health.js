@@ -7,14 +7,18 @@ let ctxScoreChart = null;
 // ---- 加载上下文健康数据 ----
 
 let ctxHealthLoading = false;
+let ctxHealthLoaded = false;
 
 async function loadContextHealth() {
     if (ctxHealthLoading) return;
     ctxHealthLoading = true;
 
-    // 显示加载状态
-    const panel = document.getElementById('panel-context-health');
-    if (panel) panel.classList.add('loading');
+    const skeleton = document.getElementById('ctxSkeleton');
+
+    // 首次加载时显示骨架屏
+    if (!ctxHealthLoaded && skeleton) {
+        skeleton.classList.remove('hidden', 'fading-out');
+    }
 
     try {
         const overview = await window.go.main.App.GetContextHealthOverview();
@@ -26,12 +30,43 @@ async function loadContextHealth() {
         renderContextGrowthChart(overview.topSessions);
         renderHealthScoreChart(overview);
         renderHealthSessionTable(overview.topSessions);
+
+        // 同步等待效率分析加载完成，避免骨架屏消失后出现二次加载闪烁
+        await loadEfficiencyAnalysis();
+
+        ctxHealthLoaded = true;
     } catch (error) {
         console.error('Failed to load context health:', error);
     } finally {
         ctxHealthLoading = false;
-        if (panel) panel.classList.remove('loading');
+        hideContextSkeleton(skeleton);
     }
+}
+
+/**
+ * 隐藏骨架屏（带淡出动画）
+ * @param {HTMLElement|null} skeleton
+ */
+function hideContextSkeleton(skeleton) {
+    if (!skeleton || skeleton.classList.contains('hidden')) return;
+
+    skeleton.classList.add('fading-out');
+
+    // 监听 transition 结束
+    const onTransitionEnd = function() {
+        skeleton.removeEventListener('transitionend', onTransitionEnd);
+        skeleton.classList.add('hidden');
+        skeleton.classList.remove('fading-out');
+    };
+    skeleton.addEventListener('transitionend', onTransitionEnd);
+
+    // 兜底：500ms 后强制隐藏
+    setTimeout(() => {
+        if (!skeleton.classList.contains('hidden')) {
+            skeleton.classList.add('hidden');
+            skeleton.classList.remove('fading-out');
+        }
+    }, 500);
 }
 
 // ---- 概览卡片 ----
@@ -351,4 +386,285 @@ function renderHealthSessionTable(sessions) {
             <td>${compressionTag}</td>
         </tr>`;
     }).join('');
+}
+
+// ============================================
+// 效率分析
+// ============================================
+
+let efficiencyData = null;
+
+/**
+ * 加载并渲染效率分析数据
+ */
+async function loadEfficiencyAnalysis() {
+    const container = document.getElementById('efficiencyContent');
+    if (!container) return;
+
+    try {
+        efficiencyData = await window.go.main.App.GetGlobalEfficiencyReport();
+        if (!efficiencyData) {
+            container.innerHTML = `<div class="empty-state"><p>${t('noData') || '暂无数据'}</p></div>`;
+            return;
+        }
+        renderEfficiencySection(container, efficiencyData);
+    } catch (error) {
+        console.error('Failed to load efficiency data:', error);
+        container.innerHTML = `<div class="empty-state"><p>${t('loadEfficiencyFailed') || '加载效率数据失败'}</p></div>`;
+    }
+}
+
+/**
+ * 渲染效率分析完整区块
+ * @param {HTMLElement} container
+ * @param {Object} report
+ */
+function renderEfficiencySection(container, report) {
+    let html = '';
+
+    // 1. 效率评分卡片 + 缓存命中率环形图 + 开销分解
+    html += '<div class="efficiency-grid">';
+
+    // 效率评分
+    html += `<div class="efficiency-score-card">
+        <div class="efficiency-score-value">${report.efficiencyScore}</div>
+        <div class="efficiency-score-label">${t('efficiencyScore') || '效率评分'}</div>
+        <div class="efficiency-score-bar">
+            <div class="efficiency-score-fill" style="width:${report.efficiencyScore}%;background:${getScoreColor(report.efficiencyScore)}"></div>
+        </div>
+    </div>`;
+
+    // 缓存命中率环形图
+    html += `<div class="efficiency-chart-box">
+        <div class="efficiency-chart-title">${t('cacheHitRate') || '缓存命中率'}</div>
+        <canvas id="cacheHitRateChart" width="180" height="180"></canvas>
+    </div>`;
+
+    // 上下文开销分解
+    html += `<div class="efficiency-chart-box">
+        <div class="efficiency-chart-title">${t('contextOverhead') || '上下文开销'}</div>
+        <canvas id="contextOverheadChart" width="180" height="180"></canvas>
+    </div>`;
+
+    html += '</div>';
+
+    // 2. Token 统计详情
+    html += '<div class="efficiency-stats-row">';
+    html += renderStatItem(t('cacheReadTokens') || '缓存读取', formatTokenCount(report.cacheReadTokens), 'var(--green)');
+    html += renderStatItem(t('cacheWriteTokens') || '缓存写入', formatTokenCount(report.cacheCreationTokens), 'var(--orange)');
+    html += renderStatItem(t('totalInputTokens') || '总输入', formatTokenCount(report.totalInputTokens), 'var(--blue)');
+    html += renderStatItem(t('claudeMdTokens') || 'CLAUDE.md', formatTokenCount(report.claudeMdTokens), 'var(--purple)');
+    html += renderStatItem(t('skillsCount') || 'Skills', String(report.skillsCount), 'var(--teal)');
+    html += renderStatItem(t('mcpServersCount') || 'MCP 服务器', String(report.mcpServersCount), 'var(--pink)');
+    html += '</div>';
+
+    // 3. 未使用 MCP 工具
+    if (report.unusedMcpTools && report.unusedMcpTools.length > 0) {
+        html += '<div class="efficiency-section">';
+        html += `<div class="efficiency-section-title">${t('unusedMcpTools') || '未使用的 MCP 工具'}</div>`;
+        html += '<div class="unused-tools-list">';
+        for (const tool of report.unusedMcpTools) {
+            html += `<span class="unused-tool-tag">${escapeHtml(tool)}</span>`;
+        }
+        html += '</div></div>';
+    }
+
+    // 4. 优化建议
+    if (report.recommendations && report.recommendations.length > 0) {
+        html += '<div class="efficiency-section">';
+        html += `<div class="efficiency-section-title">${t('optimizationTips') || '优化建议'}</div>`;
+        html += '<div class="recommendations-list">';
+        for (const rec of report.recommendations) {
+            html += `<div class="recommendation-item">
+                <span class="recommendation-icon">💡</span>
+                <span class="recommendation-text">${escapeHtml(rec)}</span>
+            </div>`;
+        }
+        html += '</div></div>';
+    }
+
+    container.innerHTML = html;
+
+    // 渲染图表（DOM 就绪后）
+    setTimeout(() => {
+        renderCacheHitRateChart(report);
+        renderContextOverheadChart(report);
+    }, 50);
+}
+
+/**
+ * 渲染缓存命中率环形图
+ */
+function renderCacheHitRateChart(report) {
+    const canvas = document.getElementById('cacheHitRateChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+
+    const rate = report.cacheHitRate || 0;
+    const color = rate >= 70 ? 'rgba(52, 199, 89, 0.8)' :
+                  rate >= 40 ? 'rgba(255, 149, 0, 0.8)' :
+                  'rgba(255, 59, 48, 0.8)';
+    const bgColor = rate >= 70 ? 'rgba(52, 199, 89, 0.15)' :
+                     rate >= 40 ? 'rgba(255, 149, 0, 0.15)' :
+                     'rgba(255, 59, 48, 0.15)';
+
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
+    new Chart(canvas, {
+        type: 'doughnut',
+        data: {
+            datasets: [{
+                data: [rate, 100 - rate],
+                backgroundColor: [color, bgColor],
+                borderColor: isDark ? '#1c1c1e' : '#ffffff',
+                borderWidth: 2,
+            }]
+        },
+        options: {
+            responsive: false,
+            cutout: '70%',
+            plugins: {
+                legend: { display: false },
+                tooltip: { enabled: false },
+            }
+        },
+        plugins: [{
+            id: 'centerText',
+            afterDraw: function(chart) {
+                const ctx = chart.ctx;
+                const centerX = chart.chartArea.left + (chart.chartArea.right - chart.chartArea.left) / 2;
+                const centerY = chart.chartArea.top + (chart.chartArea.bottom - chart.chartArea.top) / 2;
+
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                // 大数字
+                ctx.font = 'bold 24px -apple-system, sans-serif';
+                ctx.fillStyle = isDark ? '#ffffff' : '#1d1d1f';
+                ctx.fillText(rate.toFixed(1) + '%', centerX, centerY - 6);
+
+                // 小标签
+                ctx.font = '10px -apple-system, sans-serif';
+                ctx.fillStyle = isDark ? '#8e8e93' : '#86868b';
+                ctx.fillText(t('cacheHitRate') || '缓存命中率', centerX, centerY + 14);
+
+                ctx.restore();
+            }
+        }]
+    });
+}
+
+/**
+ * 渲染上下文开销分解环形图
+ */
+function renderContextOverheadChart(report) {
+    const canvas = document.getElementById('contextOverheadChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+
+    const data = [
+        report.claudeMdTokens || 0,
+        (report.skillsCount || 0) * 500, // 估算
+        (report.mcpServersCount || 0) * 1000, // 估算
+        Math.max(0, (report.totalInputTokens || 0) - (report.claudeMdTokens || 0) - (report.skillsCount || 0) * 500 - (report.mcpServersCount || 0) * 1000),
+    ];
+
+    const labels = [
+        'CLAUDE.md',
+        'Skills',
+        'MCP',
+        t('conversation') || '对话',
+    ];
+
+    const colors = [
+        'rgba(175, 82, 222, 0.8)',  // purple
+        'rgba(0, 199, 190, 0.8)',   // teal
+        'rgba(255, 149, 0, 0.8)',   // orange
+        'rgba(0, 122, 255, 0.8)',   // blue
+    ];
+
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
+    // 过滤掉零值
+    const filteredData = [];
+    const filteredLabels = [];
+    const filteredColors = [];
+    for (let i = 0; i < data.length; i++) {
+        if (data[i] > 0) {
+            filteredData.push(data[i]);
+            filteredLabels.push(labels[i]);
+            filteredColors.push(colors[i]);
+        }
+    }
+
+    if (filteredData.length === 0) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = isDark ? '#8e8e93' : '#86868b';
+        ctx.font = '12px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(t('noData') || '暂无数据', canvas.width / 2, canvas.height / 2);
+        return;
+    }
+
+    new Chart(canvas, {
+        type: 'doughnut',
+        data: {
+            labels: filteredLabels,
+            datasets: [{
+                data: filteredData,
+                backgroundColor: filteredColors,
+                borderColor: isDark ? '#1c1c1e' : '#ffffff',
+                borderWidth: 2,
+            }]
+        },
+        options: {
+            responsive: false,
+            cutout: '55%',
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        color: isDark ? '#8e8e93' : '#86868b',
+                        font: { size: 10, family: '-apple-system, sans-serif' },
+                        padding: 8,
+                        usePointStyle: true,
+                        pointStyleWidth: 8,
+                        boxHeight: 6,
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) {
+                            const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                            const pct = total > 0 ? (ctx.raw / total * 100).toFixed(1) : 0;
+                            return ' ' + ctx.label + ': ' + formatTokenCount(ctx.raw) + ' (' + pct + '%)';
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+/**
+ * 渲染统计项
+ */
+function renderStatItem(label, value, color) {
+    return `<div class="efficiency-stat-item">
+        <div class="efficiency-stat-dot" style="background:${color}"></div>
+        <div class="efficiency-stat-info">
+            <div class="efficiency-stat-value">${value}</div>
+            <div class="efficiency-stat-label">${label}</div>
+        </div>
+    </div>`;
+}
+
+/**
+ * 获取评分颜色
+ */
+function getScoreColor(score) {
+    if (score >= 80) return 'var(--green)';
+    if (score >= 60) return 'var(--blue)';
+    if (score >= 40) return 'var(--orange)';
+    return 'var(--red)';
 }
